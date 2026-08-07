@@ -46,6 +46,10 @@ class JobWorkspace:
         return self.root / "run.log"
 
     @property
+    def tokens_json(self) -> Path:
+        return self.root / "tokens.json"
+
+    @property
     def asr_dir(self) -> Path:
         return self.root / "asr"
 
@@ -53,10 +57,15 @@ class JobWorkspace:
     def alignment_dir(self) -> Path:
         return self.root / "alignment"
 
+    @property
+    def alignment_repaired_dir(self) -> Path:
+        return self.root / "alignment_repaired"
+
     def ensure_layout(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
         self.asr_dir.mkdir(exist_ok=True)
         self.alignment_dir.mkdir(exist_ok=True)
+        self.alignment_repaired_dir.mkdir(exist_ok=True)
 
     def write_job(self, payload: dict[str, Any]) -> None:
         atomic_write_json(self.job_json, payload)
@@ -92,5 +101,5 @@ def initial_job_record(
         "source": {"path": source},
         "args": args,
         "stages_completed": [],
-        "phase": "phase3_asr",
+        "phase": "phase4_alignment",
     }

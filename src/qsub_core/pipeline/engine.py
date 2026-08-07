@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from qsub_core import errors
+from qsub_core.alignment.merge import merge_global_tokens
+from qsub_core.alignment.qwen import AlignmentError, QwenAlignmentBackend
+from qsub_core.alignment.repair import repair_items
+from qsub_core.alignment.validate import validate_items
 from qsub_core.asr.qwen import ASRError, QwenASRBackend
 from qsub_core.events import EventEmitter
 from qsub_core.io_util import atomic_write_json
@@ -18,9 +22,10 @@ from qsub_core.pipeline.audio_io import load_mono_wav, slice_wav
 from qsub_core.pipeline.chunk_plan import ChunkPlan, plan_chunks_from_vad
 from qsub_core.pipeline.fingerprint import source_fingerprint
 from qsub_core.pipeline.resume import (
+    alignment_chunk_path,
     asr_chunk_path,
     is_cancel_requested,
-    is_valid_asr_artifact,
+    list_completed_alignment_chunks,
     list_completed_asr_chunks,
     load_json,
 )
@@ -63,7 +68,7 @@ class TranscribeOptions:
 
 
 class PipelineEngine:
-    """Phase 3: probe → extract → VAD → chunks → ASR (Safe Mode, resumable)."""
+    """Phase 4: media → ASR → ForcedAlign + repair/merge (Safe Mode, resumable)."""
 
     def __init__(self, opts: TranscribeOptions, events: EventEmitter):
         self.opts = opts
@@ -100,15 +105,18 @@ class PipelineEngine:
                 # Language change invalidates ASR and descendants (Spec §28).
                 if prev_lang != self.opts.language:
                     log.info(
-                        "language changed %r → %r; invalidating ASR artifacts",
+                        "language changed %r → %r; invalidating ASR/alignment artifacts",
                         prev_lang,
                         self.opts.language,
                     )
                     self._invalidate_asr()
+                    self._invalidate_alignment()
                     job["stages_completed"] = [
-                        s for s in job["stages_completed"] if s not in {"asr", "alignment", "subtitle", "export"}
+                        s
+                        for s in job["stages_completed"]
+                        if s not in {"asr", "alignment", "subtitle", "export"}
                     ]
-        job["phase"] = "phase3_asr"
+        job["phase"] = "phase4_alignment"
         self.ws.write_job(job)
         self.events.emit("job_started", job_id=self.ws.job_id, work_dir=str(self.ws.root))
         log.info("job %s work_dir=%s source=%s", self.ws.job_id, self.ws.root, src)
@@ -144,11 +152,21 @@ class PipelineEngine:
         if code != errors.SUCCESS:
             return code
 
-        overall = WEIGHTS["probe"] + WEIGHTS["extract"] + WEIGHTS["vad"] + WEIGHTS["asr"]
-        job["status"] = "phase3_asr_complete"
+        code = self._stage_alignment(job, chunks)
+        if code != errors.SUCCESS:
+            return code
+
+        overall = (
+            WEIGHTS["probe"]
+            + WEIGHTS["extract"]
+            + WEIGHTS["vad"]
+            + WEIGHTS["asr"]
+            + WEIGHTS["alignment"]
+        )
+        job["status"] = "phase4_alignment_complete"
         job["notes"] = [
-            "Phase 3: media pipeline + chunk ASR complete (Safe Mode).",
-            "Alignment / timestamp repair / SRT arrive in Phase 4–5.",
+            "Phase 4: ForcedAlign + timestamp repair + overlap merge complete.",
+            "Subtitle segmentation / SRT arrive in Phase 5.",
         ]
         self.ws.write_job(job)
 
@@ -157,13 +175,13 @@ class PipelineEngine:
         self.events.emit(
             "completed",
             elapsed_seconds=elapsed,
-            phase="phase3_asr",
+            phase="phase4_alignment",
             chunks=len(chunks),
             overall=overall,
-            next="alignment (Phase 4)",
+            next="subtitle/SRT (Phase 5)",
         )
         log.info(
-            "job %s phase3 complete chunks=%s in %ss",
+            "job %s phase4 complete chunks=%s in %ss",
             self.ws.job_id,
             len(chunks),
             elapsed,
@@ -175,6 +193,20 @@ class PipelineEngine:
         for path in self.ws.asr_dir.glob("*.json"):
             try:
                 path.unlink()
+            except OSError:
+                pass
+
+    def _invalidate_alignment(self) -> None:
+        assert self.ws is not None
+        for directory in (self.ws.alignment_dir, self.ws.alignment_repaired_dir):
+            for path in directory.glob("*.json"):
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+        if self.ws.tokens_json.exists():
+            try:
+                self.ws.tokens_json.unlink()
             except OSError:
                 pass
 
@@ -483,6 +515,220 @@ class PipelineEngine:
         self.events.emit("artifact", kind="asr_dir", path=str(self.ws.asr_dir))
         return errors.SUCCESS
 
+    def _stage_alignment(self, job: dict[str, Any], chunks: list[ChunkPlan]) -> int:
+        assert self.ws is not None
+        self.events.emit("stage_started", stage="alignment")
+        base = WEIGHTS["probe"] + WEIGHTS["extract"] + WEIGHTS["vad"] + WEIGHTS["asr"]
+        total = len(chunks)
+        chunk_dicts = [c.to_dict() for c in chunks]
+
+        done = set()
+        if self.opts.resume:
+            done = list_completed_alignment_chunks(self.ws.alignment_dir, chunk_dicts)
+            if done:
+                log.info(
+                    "resume: skipping %s/%s completed alignment chunks",
+                    len(done),
+                    total,
+                )
+                self.events.emit(
+                    "progress",
+                    stage="alignment",
+                    current=len(done),
+                    total=total,
+                    overall=base + WEIGHTS["alignment"] * (len(done) / max(total, 1)),
+                )
+
+        # Load ASR texts for all chunks
+        asr_by_id: dict[int, dict[str, Any]] = {}
+        for ch in chunks:
+            rec = load_json(asr_chunk_path(self.ws.asr_dir, ch.id))
+            if not isinstance(rec, dict):
+                return self._fail(
+                    job,
+                    errors.ASR_FAILURE,
+                    f"missing ASR artifact for chunk {ch.id}",
+                )
+            asr_by_id[ch.id] = rec
+
+        need_infer = [c for c in chunks if c.id not in done]
+        skipped = len(done)
+        processed = 0
+        warning_count = 0
+
+        if need_infer:
+            try:
+                device = resolve_device(self.opts.device)
+            except RuntimeError as exc:
+                return self._fail(job, errors.CUDA_UNAVAILABLE, str(exc))
+
+            wav, sr, _ = load_mono_wav(self.ws.audio_wav)
+            backend: QwenAlignmentBackend | None = None
+            try:
+                backend = QwenAlignmentBackend(device=device)
+                for ch in need_infer:
+                    if is_cancel_requested(self.ws.root):
+                        return self._fail(job, errors.CANCELED, "canceled by user")
+
+                    asr = asr_by_id[ch.id]
+                    text = (asr.get("text") or "").strip()
+                    language = asr.get("language") or (
+                        None if self.opts.language.lower() == "auto" else self.opts.language
+                    ) or "Chinese"
+
+                    if not text:
+                        record = {
+                            "chunk_id": ch.id,
+                            "start": ch.start,
+                            "end": ch.end,
+                            "overlap_before": ch.overlap_before,
+                            "language": language,
+                            "items": [],
+                            "warning": "empty_asr_text",
+                            "model": "Qwen3-ForcedAligner-0.6B",
+                        }
+                        atomic_write_json(alignment_chunk_path(self.ws.alignment_dir, ch.id), record)
+                        done.add(ch.id)
+                        processed += 1
+                        continue
+
+                    audio = slice_wav(wav, sr, ch.start, ch.end)
+                    t1 = time.perf_counter()
+                    try:
+                        result = backend.align(audio, sr, text, str(language))
+                    except AlignmentError as exc:
+                        return self._fail(job, exc.code, str(exc))
+
+                    items = [
+                        {"text": it.text, "start": it.start, "end": it.end}
+                        for it in result.items
+                    ]
+                    record = {
+                        "chunk_id": ch.id,
+                        "start": ch.start,
+                        "end": ch.end,
+                        "overlap_before": ch.overlap_before,
+                        "language": language,
+                        "items": items,
+                        "model": result.model,
+                        "elapsed_seconds": round(time.perf_counter() - t1, 3),
+                    }
+                    # Raw aligner output — do not overwrite with repairs (Spec §15).
+                    atomic_write_json(alignment_chunk_path(self.ws.alignment_dir, ch.id), record)
+                    done.add(ch.id)
+                    processed += 1
+                    self.events.emit(
+                        "progress",
+                        stage="alignment",
+                        current=len(done),
+                        total=total,
+                        overall=base + WEIGHTS["alignment"] * (len(done) / max(total, 1)),
+                    )
+                    log.info(
+                        "align chunk %06d tokens=%s in %ss",
+                        ch.id,
+                        len(items),
+                        record["elapsed_seconds"],
+                    )
+            finally:
+                if backend is not None:
+                    backend.close()
+
+        missing = [c.id for c in chunks if c.id not in done]
+        if missing:
+            return self._fail(
+                job,
+                errors.ALIGNMENT_FAILURE,
+                f"alignment incomplete; missing chunks: {missing[:8]}",
+            )
+
+        # Repair each chunk + merge globally
+        repaired_records: list[dict[str, Any]] = []
+        for ch in chunks:
+            raw = load_json(alignment_chunk_path(self.ws.alignment_dir, ch.id))
+            if not isinstance(raw, dict):
+                return self._fail(
+                    job,
+                    errors.ALIGNMENT_FAILURE,
+                    f"corrupt alignment artifact chunk {ch.id}",
+                )
+            chunk_dur = max(0.001, float(ch.end) - float(ch.start))
+            issues_before = validate_items(raw.get("items") or [], chunk_duration=chunk_dur)
+            for issue in issues_before.issues:
+                if issue.code == "ZERO_DURATION":
+                    self.events.emit(
+                        "warning",
+                        code="ALIGN_ZERO_DURATION",
+                        chunk=ch.id,
+                        index=issue.index,
+                    )
+                    warning_count += 1
+            repaired_items, residual, quality = repair_items(
+                list(raw.get("items") or []),
+                chunk_duration=chunk_dur,
+            )
+            repaired = dict(raw)
+            repaired["items"] = repaired_items
+            repaired["alignment_quality"] = quality
+            repaired["validation_issues"] = [
+                {"code": i.code, "index": i.index, "message": i.message}
+                for i in residual
+            ]
+            atomic_write_json(
+                self.ws.alignment_repaired_dir / f"{ch.id:06d}.json",
+                repaired,
+            )
+            repaired_records.append(repaired)
+
+        tokens = merge_global_tokens(repaired_records, chunk_dicts)
+        atomic_write_json(
+            self.ws.tokens_json,
+            {
+                "schema_version": 1,
+                "count": len(tokens),
+                "tokens": tokens,
+            },
+        )
+
+        # Basic global invariant check
+        mono_viol = 0
+        for i in range(1, len(tokens)):
+            if tokens[i]["start"] + 1e-9 < tokens[i - 1]["start"]:
+                mono_viol += 1
+        if mono_viol:
+            self.events.emit(
+                "warning",
+                code="TOKEN_MONOTONICITY",
+                count=mono_viol,
+                message="global token starts not fully monotonic after merge",
+            )
+            warning_count += 1
+
+        stages = list(job.get("stages_completed") or [])
+        if "alignment" not in stages:
+            stages.append("alignment")
+        job["stages_completed"] = stages
+        job["alignment"] = {
+            "completed": total,
+            "total": total,
+            "skipped": skipped,
+            "processed": processed,
+            "tokens": len(tokens),
+            "warnings": warning_count,
+        }
+        self.ws.write_job(job)
+        self.events.emit(
+            "progress",
+            stage="alignment",
+            current=total,
+            total=total,
+            overall=base + WEIGHTS["alignment"],
+        )
+        self.events.emit("stage_finished", stage="alignment")
+        self.events.emit("artifact", kind="alignment_dir", path=str(self.ws.alignment_dir))
+        self.events.emit("artifact", kind="tokens", path=str(self.ws.tokens_json))
+        return errors.SUCCESS
+
 
 def _code_name(code: int) -> str:
     mapping = {
@@ -496,6 +742,8 @@ def _code_name(code: int) -> str:
         errors.CUDA_OOM: "CUDA_OOM",
         errors.MODEL_MISSING: "MODEL_MISSING",
         errors.ASR_FAILURE: "ASR_FAILURE",
+        errors.ALIGNMENT_FAILURE: "ALIGNMENT_FAILURE",
+        errors.TIMESTAMP_VALIDATION_FAILURE: "TIMESTAMP_VALIDATION_FAILURE",
         errors.CANCELED: "CANCELED",
     }
     return mapping.get(code, f"CODE_{code}")

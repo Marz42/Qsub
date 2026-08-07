@@ -11,6 +11,10 @@ def asr_chunk_path(asr_dir: Path, chunk_id: int) -> Path:
     return asr_dir / f"{chunk_id:06d}.json"
 
 
+def alignment_chunk_path(alignment_dir: Path, chunk_id: int) -> Path:
+    return alignment_dir / f"{chunk_id:06d}.json"
+
+
 def load_json(path: Path) -> Any | None:
     if not path.is_file():
         return None
@@ -27,7 +31,29 @@ def is_valid_asr_artifact(record: Any, *, chunk_id: int, start: float, end: floa
         return False
     if "text" not in record:
         return False
-    # Allow small float noise
+    try:
+        if abs(float(record.get("start", -1)) - float(start)) > 0.05:
+            return False
+        if abs(float(record.get("end", -1)) - float(end)) > 0.05:
+            return False
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def is_valid_alignment_artifact(
+    record: Any,
+    *,
+    chunk_id: int,
+    start: float,
+    end: float,
+) -> bool:
+    if not isinstance(record, dict):
+        return False
+    if record.get("chunk_id") != chunk_id:
+        return False
+    if "items" not in record or not isinstance(record["items"], list):
+        return False
     try:
         if abs(float(record.get("start", -1)) - float(start)) > 0.05:
             return False
@@ -45,6 +71,25 @@ def list_completed_asr_chunks(asr_dir: Path, chunks: list[dict[str, Any]]) -> se
         path = asr_chunk_path(asr_dir, cid)
         record = load_json(path)
         if is_valid_asr_artifact(
+            record,
+            chunk_id=cid,
+            start=float(ch["start"]),
+            end=float(ch["end"]),
+        ):
+            done.add(cid)
+    return done
+
+
+def list_completed_alignment_chunks(
+    alignment_dir: Path,
+    chunks: list[dict[str, Any]],
+) -> set[int]:
+    done: set[int] = set()
+    for ch in chunks:
+        cid = int(ch["id"])
+        path = alignment_chunk_path(alignment_dir, cid)
+        record = load_json(path)
+        if is_valid_alignment_artifact(
             record,
             chunk_id=cid,
             start=float(ch["start"]),
