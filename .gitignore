@@ -17,6 +17,10 @@ models/Qwen3-ForcedAligner-0.6B/
 models/silero-vad/
 bin/ffmpeg.exe
 bin/ffprobe.exe
+bin/*.zip
+
+# Portable / release trees
+dist/
 
 # Spike / job outputs
 spikes/**/out/

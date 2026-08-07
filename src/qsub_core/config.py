@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from functools import lru_cache
 from pathlib import Path
 
 from qsub_core import __version__
@@ -11,17 +12,44 @@ from qsub_core import __version__
 APP_NAME = "QwenSubtitle"
 APP_VERSION = __version__
 
-# Spec §12 chunk defaults (exposed for CLI later)
 TARGET_CHUNK_DURATION = 120.0
 SOFT_MAX_DURATION = 180.0
 HARD_MAX_DURATION = 240.0
 CHUNK_OVERLAP = 0.75
 
 
+def _looks_like_install_root(path: Path) -> bool:
+    return (path / "manifests" / "runtime-lock.json").is_file() or (
+        (path / "runtime").is_dir() and (path / "bin").is_dir()
+    )
+
+
+@lru_cache(maxsize=1)
+def install_root() -> Path:
+    """
+    Resolve install / checkout root.
+
+    Priority:
+      1. QSUB_ROOT
+      2. Walk parents of this file for a portable layout marker
+      3. Source checkout root (…/src/qsub_core/config.py → repo)
+    """
+    env = os.environ.get("QSUB_ROOT")
+    if env:
+        return Path(env).expanduser().resolve()
+
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if _looks_like_install_root(parent):
+            return parent
+
+    # Dev checkout: src/qsub_core/config.py → parents[2]
+    return here.parents[2]
+
+
 def repo_root() -> Path:
-    """Repository root when running from a source checkout; else install root."""
-    # src/qsub_core/config.py → parents[2] = repo root
-    return Path(__file__).resolve().parents[2]
+    """Alias for install_root (dev checkout or portable install)."""
+    return install_root()
 
 
 def user_data_dir() -> Path:
@@ -53,7 +81,7 @@ def default_models_dir() -> Path:
     env = os.environ.get("QSUB_MODELS_DIR")
     if env:
         return Path(env).expanduser().resolve()
-    return repo_root() / "models"
+    return install_root() / "models"
 
 
 def asr_model_path() -> Path:
@@ -81,7 +109,7 @@ def bundled_bin_dir() -> Path:
     env = os.environ.get("QSUB_BIN_DIR")
     if env:
         return Path(env).expanduser().resolve()
-    return repo_root() / "bin"
+    return install_root() / "bin"
 
 
 def new_job_id() -> str:

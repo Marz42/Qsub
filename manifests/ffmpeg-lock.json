@@ -4,19 +4,19 @@
   "entries": [
     {
       "name": "ffmpeg",
-      "version": "TBD",
-      "source": "TBD-official-static-build",
+      "version": "8.1",
+      "source": "https://github.com/GyanD/codexffmpeg/releases/download/8.1/ffmpeg-8.1-essentials_build.zip",
       "local_path": "bin/ffmpeg.exe",
-      "sha256": null,
-      "license": "TBD-review-before-release"
+      "sha256": "1a65d5b0b10d8d9a81d2824a3538046a40ed3607c906b335a166add87613f705",
+      "license": "GPL-3.0-or-later"
     },
     {
       "name": "ffprobe",
-      "version": "TBD",
-      "source": "TBD-official-static-build",
+      "version": "8.1",
+      "source": "https://github.com/GyanD/codexffmpeg/releases/download/8.1/ffmpeg-8.1-essentials_build.zip",
       "local_path": "bin/ffprobe.exe",
-      "sha256": null,
-      "license": "TBD-review-before-release"
+      "sha256": "54b944d6095c4588d7548424d7acd5118390a9d4f01b1c92f841547fc9a7429c",
+      "license": "GPL-3.0-or-later"
     }
   ]
 }
