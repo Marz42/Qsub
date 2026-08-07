@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "description": "Locked model revisions for offline distribution",
+  "entries": [
+    {
+      "name": "Qwen3-ASR-0.6B",
+      "version": "TBD",
+      "source": "https://huggingface.co/Qwen/Qwen3-ASR-0.6B",
+      "revision": null,
+      "local_path": "models/Qwen3-ASR-0.6B",
+      "sha256": null,
+      "license": "TBD-review-before-release"
+    },
+    {
+      "name": "Qwen3-ForcedAligner-0.6B",
+      "version": "TBD",
+      "source": "https://huggingface.co/Qwen/Qwen3-ForcedAligner-0.6B",
+      "revision": null,
+      "local_path": "models/Qwen3-ForcedAligner-0.6B",
+      "sha256": null,
+      "license": "TBD-review-before-release"
+    },
+    {
+      "name": "silero-vad",
+      "version": "TBD",
+      "source": "https://github.com/snakers4/silero-vad",
+      "revision": null,
+      "local_path": "models/silero-vad",
+      "sha256": null,
+      "license": "TBD-review-before-release"
+    }
+  ]
+}

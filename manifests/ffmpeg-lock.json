@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "description": "Locked bundled FFmpeg / FFprobe binaries",
+  "entries": [
+    {
+      "name": "ffmpeg",
+      "version": "TBD",
+      "source": "TBD-official-static-build",
+      "local_path": "bin/ffmpeg.exe",
+      "sha256": null,
+      "license": "TBD-review-before-release"
+    },
+    {
+      "name": "ffprobe",
+      "version": "TBD",
+      "source": "TBD-official-static-build",
+      "local_path": "bin/ffprobe.exe",
+      "sha256": null,
+      "license": "TBD-review-before-release"
+    }
+  ]
+}

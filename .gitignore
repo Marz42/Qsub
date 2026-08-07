@@ -1,0 +1,31 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.dist/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local models & binaries (user-provided / build artifacts)
+models/Qwen3-ASR-0.6B/
+models/Qwen3-ForcedAligner-0.6B/
+models/silero-vad/
+bin/ffmpeg.exe
+bin/ffprobe.exe
+
+# Spike / job outputs
+spikes/**/out/
+*.wav
+!tests/fixtures/**/*.wav
+
+# User / OS
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/

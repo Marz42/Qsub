@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "description": "Locked Python / PyTorch / package runtime for a release build",
+  "note": "Filled from current uv.lock / .venv after Phase 0 environment bootstrap. Re-verify SHA256 at release.",
+  "entries": [
+    {
+      "name": "python",
+      "version": "3.12.13",
+      "source": "uv-managed-cpython",
+      "sha256": null,
+      "license": "PSF-2.0"
+    },
+    {
+      "name": "torch",
+      "version": "2.6.0+cu124",
+      "source": "https://download.pytorch.org/whl/cu124",
+      "sha256": null,
+      "license": "BSD-3-Clause"
+    },
+    {
+      "name": "qwen-asr",
+      "version": "0.0.6",
+      "source": "https://pypi.org/project/qwen-asr/",
+      "sha256": null,
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "transformers",
+      "version": "4.57.6",
+      "source": "https://pypi.org/project/transformers/",
+      "sha256": null,
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "numpy",
+      "version": "2.4.6",
+      "source": "https://pypi.org/project/numpy/",
+      "sha256": null,
+      "license": "BSD-3-Clause"
+    },
+    {
+      "name": "librosa",
+      "version": "0.11.0",
+      "source": "https://pypi.org/project/librosa/",
+      "sha256": null,
+      "license": "ISC"
+    },
+    {
+      "name": "numba",
+      "version": "0.66.0",
+      "source": "https://pypi.org/project/numba/",
+      "sha256": null,
+      "license": "BSD-2-Clause"
+    }
+  ]
+}
