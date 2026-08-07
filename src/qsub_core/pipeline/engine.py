@@ -1,4 +1,4 @@
-"""Pipeline engine — Phase 2: probe → extract → VAD → chunk plan."""
+"""Pipeline engine — Phase 3: media pipeline + chunk ASR with resume."""
 
 from __future__ import annotations
 
@@ -9,17 +9,27 @@ from pathlib import Path
 from typing import Any
 
 from qsub_core import errors
+from qsub_core.asr.qwen import ASRError, QwenASRBackend
 from qsub_core.events import EventEmitter
 from qsub_core.io_util import atomic_write_json
 from qsub_core.media.extract import ExtractError, extract_audio
 from qsub_core.media.probe import ProbeError, probe_media, select_audio_stream
-from qsub_core.pipeline.chunk_plan import plan_chunks_from_vad
+from qsub_core.pipeline.audio_io import load_mono_wav, slice_wav
+from qsub_core.pipeline.chunk_plan import ChunkPlan, plan_chunks_from_vad
 from qsub_core.pipeline.fingerprint import source_fingerprint
+from qsub_core.pipeline.resume import (
+    asr_chunk_path,
+    is_cancel_requested,
+    is_valid_asr_artifact,
+    list_completed_asr_chunks,
+    load_json,
+)
 from qsub_core.pipeline.workspace import (
     JobWorkspace,
     create_job_workspace,
     initial_job_record,
 )
+from qsub_core.system.gpu import resolve_device
 from qsub_core.vad.silero import VadError, run_vad
 
 log = logging.getLogger(__name__)
@@ -28,7 +38,7 @@ WEIGHTS = {
     "probe": 0.02,
     "extract": 0.05,
     "vad": 0.03,
-    "chunk": 0.0,  # folded into vad progress for Phase 2 reporting
+    "chunk": 0.0,
     "asr": 0.45,
     "alignment": 0.35,
     "subtitle": 0.05,
@@ -53,7 +63,7 @@ class TranscribeOptions:
 
 
 class PipelineEngine:
-    """Phase 2 media pipeline. ASR/align/SRT arrive in Phase 3–5."""
+    """Phase 3: probe → extract → VAD → chunks → ASR (Safe Mode, resumable)."""
 
     def __init__(self, opts: TranscribeOptions, events: EventEmitter):
         self.opts = opts
@@ -81,18 +91,24 @@ class PipelineEngine:
             },
         )
         if self.opts.resume and self.ws.job_json.is_file():
-            try:
-                import json
-
-                existing = json.loads(self.ws.job_json.read_text(encoding="utf-8"))
-                # Keep completed stages when reusing --work-dir
-                if existing.get("source", {}).get("path") == str(src):
-                    job["stages_completed"] = list(existing.get("stages_completed") or [])
-                    job["job_id"] = existing.get("job_id", job["job_id"])
-                    self.ws.job_id = job["job_id"]
-            except (OSError, json.JSONDecodeError):
-                pass
-        job["phase"] = "phase2_media"
+            existing = load_json(self.ws.job_json)
+            if isinstance(existing, dict) and existing.get("source", {}).get("path") == str(src):
+                prev_lang = (existing.get("args") or {}).get("language", "auto")
+                job["stages_completed"] = list(existing.get("stages_completed") or [])
+                job["job_id"] = existing.get("job_id", job["job_id"])
+                self.ws.job_id = job["job_id"]
+                # Language change invalidates ASR and descendants (Spec §28).
+                if prev_lang != self.opts.language:
+                    log.info(
+                        "language changed %r → %r; invalidating ASR artifacts",
+                        prev_lang,
+                        self.opts.language,
+                    )
+                    self._invalidate_asr()
+                    job["stages_completed"] = [
+                        s for s in job["stages_completed"] if s not in {"asr", "alignment", "subtitle", "export"}
+                    ]
+        job["phase"] = "phase3_asr"
         self.ws.write_job(job)
         self.events.emit("job_started", job_id=self.ws.job_id, work_dir=str(self.ws.root))
         log.info("job %s work_dir=%s source=%s", self.ws.job_id, self.ws.root, src)
@@ -105,77 +121,65 @@ class PipelineEngine:
             self.events.emit("error", code="INVALID_INPUT", message=str(exc))
             return errors.INVALID_INPUT
 
-        # --- probe ---
         code, probe, stream = self._stage_probe(job)
         if code != errors.SUCCESS:
             return code
         assert probe is not None and stream is not None
-        overall = WEIGHTS["probe"]
 
-        # --- extract ---
         code = self._stage_extract(job, src, stream)
         if code != errors.SUCCESS:
             return code
-        overall += WEIGHTS["extract"]
 
-        # --- vad ---
         code, vad = self._stage_vad(job)
         if code != errors.SUCCESS:
             return code
         assert vad is not None
-        overall += WEIGHTS["vad"]
 
-        # --- chunk plan ---
-        duration = float(probe.get("duration") or 0.0)
-        if duration <= 0:
-            # Fallback: derive from wav length via soundfile
-            import soundfile as sf
+        code, chunks = self._stage_chunk(job, probe, vad)
+        if code != errors.SUCCESS:
+            return code
+        assert chunks is not None
 
-            info = sf.info(str(self.ws.audio_wav))
-            duration = float(info.duration)
+        code = self._stage_asr(job, chunks)
+        if code != errors.SUCCESS:
+            return code
 
-        chunks = plan_chunks_from_vad(duration, vad.get("segments") or [])
-        chunks_payload = {"version": 1, "chunks": [c.to_dict() for c in chunks]}
-        atomic_write_json(self.ws.chunks_json, chunks_payload)
-        job.setdefault("stages_completed", [])
-        if "chunk" not in job["stages_completed"]:
-            job["stages_completed"].append("chunk")
-        job["chunks"] = {"count": len(chunks), "duration": duration}
-        job["status"] = "phase2_media_complete"
+        overall = WEIGHTS["probe"] + WEIGHTS["extract"] + WEIGHTS["vad"] + WEIGHTS["asr"]
+        job["status"] = "phase3_asr_complete"
         job["notes"] = [
-            "Phase 2 media pipeline: probe + extract + VAD + chunk plan.",
-            "ASR / alignment / SRT arrive in Phase 3–5.",
+            "Phase 3: media pipeline + chunk ASR complete (Safe Mode).",
+            "Alignment / timestamp repair / SRT arrive in Phase 4–5.",
         ]
         self.ws.write_job(job)
-        self.events.emit("artifact", kind="chunks", path=str(self.ws.chunks_json))
-        self.events.emit(
-            "progress",
-            stage="chunk",
-            current=len(chunks),
-            total=len(chunks),
-            overall=overall,
-        )
 
         elapsed = round(time.perf_counter() - t0, 3)
         self.events.emit("artifact", kind="job", path=str(self.ws.job_json))
         self.events.emit(
             "completed",
             elapsed_seconds=elapsed,
-            phase="phase2_media",
+            phase="phase3_asr",
             chunks=len(chunks),
-            next="asr (Phase 3)",
+            overall=overall,
+            next="alignment (Phase 4)",
         )
         log.info(
-            "job %s phase2 complete chunks=%s duration=%.2fs in %ss",
+            "job %s phase3 complete chunks=%s in %ss",
             self.ws.job_id,
             len(chunks),
-            duration,
             elapsed,
         )
         return errors.SUCCESS
 
+    def _invalidate_asr(self) -> None:
+        assert self.ws is not None
+        for path in self.ws.asr_dir.glob("*.json"):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+
     def _fail(self, job: dict[str, Any], code: int, message: str) -> int:
-        job["status"] = "failed"
+        job["status"] = "failed" if code != errors.CANCELED else "canceled"
         job["error"] = {"code": code, "message": message}
         assert self.ws is not None
         self.ws.write_job(job)
@@ -189,17 +193,14 @@ class PipelineEngine:
         self.events.emit("stage_started", stage="probe")
         self.events.emit("progress", stage="probe", current=0, total=1, overall=0.0)
         try:
-            if (
-                self.opts.resume
-                and self.ws.probe_json.is_file()
-                and "probe" in (job.get("stages_completed") or [])
-            ):
-                import json
-
-                probe = json.loads(self.ws.probe_json.read_text(encoding="utf-8"))
+            if self.opts.resume and self.ws.probe_json.is_file():
+                probe = load_json(self.ws.probe_json)
+                if not isinstance(probe, dict):
+                    raise ProbeError("corrupt probe.json", errors.FFPROBE_FAILURE)
                 stream = probe.get("selected_audio_stream") or select_audio_stream(
                     probe, self.opts.audio_stream
                 )
+                log.info("resume: reusing %s", self.ws.probe_json)
             else:
                 src = Path(job["source"]["path"])
                 probe = probe_media(src)
@@ -280,22 +281,20 @@ class PipelineEngine:
         self.events.emit("progress", stage="vad", current=0, total=1, overall=base)
         try:
             if self.opts.resume and self.ws.vad_json.is_file():
-                import json
-
-                vad = json.loads(self.ws.vad_json.read_text(encoding="utf-8"))
+                vad = load_json(self.ws.vad_json)
                 log.info("resume: reusing %s", self.ws.vad_json)
             else:
                 vad = run_vad(self.ws.audio_wav)
-                # Spec example is a bare array; we store object + keep segments key.
-                # Also write Spec-compatible array companion? Prefer object with segments.
                 atomic_write_json(self.ws.vad_json, vad.get("segments") or [])
                 atomic_write_json(self.ws.root / "vad_meta.json", vad)
         except VadError as exc:
             return self._fail(job, exc.code, str(exc)), None
 
-        # Normalize in-memory shape
         if isinstance(vad, list):
             vad = {"schema_version": 1, "segments": vad}
+        elif not isinstance(vad, dict):
+            return self._fail(job, errors.RUNTIME_UNAVAILABLE, "corrupt vad.json"), None
+
         stages = list(job.get("stages_completed") or [])
         if "vad" not in stages:
             stages.append("vad")
@@ -313,6 +312,177 @@ class PipelineEngine:
         self.events.emit("artifact", kind="vad", path=str(self.ws.vad_json))
         return errors.SUCCESS, vad
 
+    def _stage_chunk(
+        self,
+        job: dict[str, Any],
+        probe: dict[str, Any],
+        vad: dict[str, Any],
+    ) -> tuple[int, list[ChunkPlan] | None]:
+        assert self.ws is not None
+        base = WEIGHTS["probe"] + WEIGHTS["extract"] + WEIGHTS["vad"]
+
+        duration = float(probe.get("duration") or 0.0)
+        if duration <= 0:
+            import soundfile as sf
+
+            duration = float(sf.info(str(self.ws.audio_wav)).duration)
+
+        if self.opts.resume and self.ws.chunks_json.is_file():
+            payload = load_json(self.ws.chunks_json)
+            if isinstance(payload, dict) and payload.get("chunks"):
+                chunks = [
+                    ChunkPlan(
+                        id=int(c["id"]),
+                        start=float(c["start"]),
+                        end=float(c["end"]),
+                        overlap_before=float(c.get("overlap_before") or 0.0),
+                        cut_reason=str(c.get("cut_reason") or "natural"),
+                    )
+                    for c in payload["chunks"]
+                ]
+                log.info("resume: reusing %s (%s chunks)", self.ws.chunks_json, len(chunks))
+            else:
+                chunks = plan_chunks_from_vad(duration, vad.get("segments") or [])
+                atomic_write_json(
+                    self.ws.chunks_json,
+                    {"version": 1, "chunks": [c.to_dict() for c in chunks]},
+                )
+        else:
+            chunks = plan_chunks_from_vad(duration, vad.get("segments") or [])
+            atomic_write_json(
+                self.ws.chunks_json,
+                {"version": 1, "chunks": [c.to_dict() for c in chunks]},
+            )
+
+        stages = list(job.get("stages_completed") or [])
+        if "chunk" not in stages:
+            stages.append("chunk")
+        job["stages_completed"] = stages
+        job["chunks"] = {"count": len(chunks), "duration": duration}
+        self.ws.write_job(job)
+        self.events.emit("artifact", kind="chunks", path=str(self.ws.chunks_json))
+        self.events.emit(
+            "progress",
+            stage="chunk",
+            current=len(chunks),
+            total=len(chunks),
+            overall=base,
+        )
+        return errors.SUCCESS, chunks
+
+    def _stage_asr(self, job: dict[str, Any], chunks: list[ChunkPlan]) -> int:
+        assert self.ws is not None
+        self.events.emit("stage_started", stage="asr")
+        base = WEIGHTS["probe"] + WEIGHTS["extract"] + WEIGHTS["vad"]
+        total = len(chunks)
+        chunk_dicts = [c.to_dict() for c in chunks]
+
+        done = set()
+        if self.opts.resume:
+            done = list_completed_asr_chunks(self.ws.asr_dir, chunk_dicts)
+            if done:
+                log.info("resume: skipping %s/%s completed ASR chunks", len(done), total)
+                self.events.emit(
+                    "progress",
+                    stage="asr",
+                    current=len(done),
+                    total=total,
+                    overall=base + WEIGHTS["asr"] * (len(done) / max(total, 1)),
+                )
+
+        if len(done) == total and total > 0:
+            stages = list(job.get("stages_completed") or [])
+            if "asr" not in stages:
+                stages.append("asr")
+            job["stages_completed"] = stages
+            job["asr"] = {"completed": total, "total": total, "skipped": total}
+            self.ws.write_job(job)
+            self.events.emit("stage_finished", stage="asr")
+            self.events.emit("artifact", kind="asr_dir", path=str(self.ws.asr_dir))
+            return errors.SUCCESS
+
+        language = None if self.opts.language.lower() == "auto" else self.opts.language
+        try:
+            device = resolve_device(self.opts.device)
+        except RuntimeError as exc:
+            return self._fail(job, errors.CUDA_UNAVAILABLE, str(exc))
+
+        wav, sr, _ = load_mono_wav(self.ws.audio_wav)
+        backend: QwenASRBackend | None = None
+        skipped = len(done)
+        processed = 0
+        try:
+            backend = QwenASRBackend(device=device)
+            for ch in chunks:
+                if is_cancel_requested(self.ws.root):
+                    return self._fail(job, errors.CANCELED, "canceled by user")
+
+                if ch.id in done:
+                    continue
+
+                audio = slice_wav(wav, sr, ch.start, ch.end)
+                t1 = time.perf_counter()
+                try:
+                    result = backend.transcribe(audio, sr, language)
+                except ASRError as exc:
+                    return self._fail(job, exc.code, str(exc))
+
+                record = {
+                    "chunk_id": ch.id,
+                    "start": ch.start,
+                    "end": ch.end,
+                    "overlap_before": ch.overlap_before,
+                    "language": result.language,
+                    "text": result.text,
+                    "model": result.model,
+                    "elapsed_seconds": round(time.perf_counter() - t1, 3),
+                }
+                path = asr_chunk_path(self.ws.asr_dir, ch.id)
+                atomic_write_json(path, record)
+                done.add(ch.id)
+                processed += 1
+                self.events.emit(
+                    "progress",
+                    stage="asr",
+                    current=len(done),
+                    total=total,
+                    overall=base + WEIGHTS["asr"] * (len(done) / max(total, 1)),
+                )
+                log.info(
+                    "ASR chunk %06d chars=%s lang=%r in %ss",
+                    ch.id,
+                    len(result.text),
+                    result.language,
+                    record["elapsed_seconds"],
+                )
+        finally:
+            if backend is not None:
+                backend.close()
+
+        # Verify all artifacts present
+        missing = [c.id for c in chunks if c.id not in done]
+        if missing:
+            return self._fail(
+                job,
+                errors.ASR_FAILURE,
+                f"ASR incomplete; missing chunks: {missing[:8]}",
+            )
+
+        stages = list(job.get("stages_completed") or [])
+        if "asr" not in stages:
+            stages.append("asr")
+        job["stages_completed"] = stages
+        job["asr"] = {
+            "completed": len(done),
+            "total": total,
+            "skipped": skipped,
+            "processed": processed,
+        }
+        self.ws.write_job(job)
+        self.events.emit("stage_finished", stage="asr")
+        self.events.emit("artifact", kind="asr_dir", path=str(self.ws.asr_dir))
+        return errors.SUCCESS
+
 
 def _code_name(code: int) -> str:
     mapping = {
@@ -322,6 +492,10 @@ def _code_name(code: int) -> str:
         errors.FFPROBE_FAILURE: "FFPROBE_FAILURE",
         errors.FFMPEG_FAILURE: "FFMPEG_FAILURE",
         errors.RUNTIME_UNAVAILABLE: "RUNTIME_UNAVAILABLE",
+        errors.CUDA_UNAVAILABLE: "CUDA_UNAVAILABLE",
+        errors.CUDA_OOM: "CUDA_OOM",
         errors.MODEL_MISSING: "MODEL_MISSING",
+        errors.ASR_FAILURE: "ASR_FAILURE",
+        errors.CANCELED: "CANCELED",
     }
     return mapping.get(code, f"CODE_{code}")

@@ -2,26 +2,13 @@
 
 本地离线 Windows 字幕生成工具。架构：**成熟 CLI Core + 薄 PySide6 GUI**。
 
-当前进度：**Phase 2 — Media Pipeline**
-
-## 环境
-
-- Windows 10/11 x64
-- Python 3.12 + [uv](https://github.com/astral-sh/uv)
-- NVIDIA GPU（推荐 ≥6 GB VRAM）
-- 模型放到 `models/`（禁止运行时隐式下载）
-- 开发期可使用 PATH 上的 FFmpeg；发布版使用 `bin/`
+当前进度：**Phase 3 — ASR + Resume**
 
 ## 安装
 
 ```powershell
 cd qwen-subtitle
 uv sync --extra dev
-```
-
-导出 Silero VAD 到 `models/silero-vad/`（推荐，发布锁定用）：
-
-```powershell
 uv run python scripts/download_models.py --only vad --confirm-download
 ```
 
@@ -31,36 +18,23 @@ uv run python scripts/download_models.py --only vad --confirm-download
 uv run qsub doctor
 uv run qsub probe movie.mkv
 
-# Phase 2：probe → 16k mono WAV → VAD → chunks.json
-uv run qsub transcribe movie.mkv --events ndjson
+# Phase 3：probe → extract → VAD → chunks → ASR（Safe Mode，可 resume）
+uv run qsub transcribe movie.mkv --language Chinese --events ndjson
+
+# 指定工作目录以便中断后续跑
+uv run qsub transcribe movie.mkv --work-dir $env:TEMP\qsub-job --resume
 ```
 
-用户数据目录：`%LOCALAPPDATA%\QwenSubtitle\`（可用 `QSUB_DATA_DIR` 覆盖）。
+取消（在 chunk 边界生效）：在 job 目录写入 `cancel.flag`。
 
-## 放置模型
+用户数据：`%LOCALAPPDATA%\QwenSubtitle\`（`QSUB_DATA_DIR` 可覆盖）。
+
+## 模型
 
 见 [`models/README.md`](models/README.md)。
 
-## Phase 0 Spike（模型冒烟）
-
-```powershell
-uv run python scripts/phase0_spike.py sample.wav --language Chinese
-```
-
-## Lock 清单
-
-| 文件 | 用途 |
-|------|------|
-| `manifests/runtime-lock.json` | Python / PyTorch / 包版本 |
-| `manifests/model-lock.json` | 模型 revision / sha256 |
-| `manifests/ffmpeg-lock.json` | 内置 FFmpeg / FFprobe |
-
-## UI 语言
-
-产品默认界面语言：**中文**（GUI 在 Phase 7）。
-
 ## 路线图
 
-- Phase 3 — ASR + Resume
-- Phase 4 — Alignment + 时间轴修复
+- Phase 4 — Alignment + 时间轴修复 + overlap 去重
 - Phase 5 — project.json / SRT
+- Phase 6+ — 打包 / GUI / Installer
