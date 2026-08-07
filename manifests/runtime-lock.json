@@ -51,6 +51,20 @@
       "source": "https://pypi.org/project/numba/",
       "sha256": null,
       "license": "BSD-2-Clause"
+    },
+    {
+      "name": "silero-vad",
+      "version": "6.2.1",
+      "source": "https://pypi.org/project/silero-vad/",
+      "sha256": null,
+      "license": "MIT"
+    },
+    {
+      "name": "torchaudio",
+      "version": "2.6.0+cu124",
+      "source": "https://download.pytorch.org/whl/cu124",
+      "sha256": null,
+      "license": "BSD-2-Clause"
     }
   ]
 }

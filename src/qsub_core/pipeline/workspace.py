@@ -92,5 +92,5 @@ def initial_job_record(
         "source": {"path": source},
         "args": args,
         "stages_completed": [],
-        "phase": "phase1_skeleton",
+        "phase": "phase2_media",
     }

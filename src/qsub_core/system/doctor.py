@@ -25,6 +25,21 @@ def _model_status(path: Path) -> dict[str, Any]:
     return {"path": str(path), "ok": exists}
 
 
+def _vad_status() -> dict[str, Any]:
+    path = vad_model_path()
+    from qsub_core.vad.silero import _find_local_model_file
+
+    local = _find_local_model_file(path)
+    if local is not None:
+        return {"path": str(path), "ok": True, "source": str(local)}
+    try:
+        import silero_vad  # noqa: F401
+
+        return {"path": str(path), "ok": True, "source": "silero-vad-package"}
+    except ImportError:
+        return {"path": str(path), "ok": False, "source": None}
+
+
 def collect_doctor_report() -> dict[str, Any]:
     gpu = probe_gpu()
     user_dirs = ensure_user_dirs()
@@ -35,7 +50,7 @@ def collect_doctor_report() -> dict[str, Any]:
 
     asr = _model_status(asr_model_path())
     aligner = _model_status(aligner_model_path())
-    vad = _model_status(vad_model_path())
+    vad = _vad_status()
 
     checks = {
         "windows": platform.system() == "Windows",
@@ -45,9 +60,9 @@ def collect_doctor_report() -> dict[str, Any]:
         "torch_cuda": gpu.torch_cuda_available,
         "asr_model": asr["ok"],
         "aligner_model": aligner["ok"],
+        "vad_model": vad["ok"],
         "user_data_writable": writable,
     }
-    # VAD optional for Phase 1 readiness (required from Phase 2)
     ready = all(
         [
             checks["windows"],
@@ -56,6 +71,7 @@ def collect_doctor_report() -> dict[str, Any]:
             checks["ffprobe"],
             checks["asr_model"],
             checks["aligner_model"],
+            checks["vad_model"],
             checks["user_data_writable"],
         ]
     )
@@ -98,6 +114,7 @@ def format_doctor_text(report: dict[str, Any]) -> str:
         f"FFprobe:      {'OK' if report['checks']['ffprobe'] else 'MISSING'}",
         f"ASR Model:    {'OK' if report['checks']['asr_model'] else 'MISSING'}",
         f"Aligner:      {'OK' if report['checks']['aligner_model'] else 'MISSING'}",
+        f"VAD:          {'OK' if report['checks'].get('vad_model') else 'MISSING'}",
         f"User data:    {'OK' if report['checks']['user_data_writable'] else 'FAIL'}",
         "",
         f"Status: {report['status']}",

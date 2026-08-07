@@ -33,7 +33,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_probe.add_argument("--json", action="store_true", help="输出 JSON")
 
     # transcribe
-    p_tr = sub.add_parser("transcribe", help="转录并生成字幕（Phase 1：任务工作区 + probe）")
+    p_tr = sub.add_parser(
+        "transcribe",
+        help="转录并生成字幕（Phase 2：probe + 抽音 + VAD + chunk）",
+    )
     p_tr.add_argument("input", type=Path, help="输入媒体文件")
     p_tr.add_argument("--output", type=Path, default=None, help="输出 .srt 路径（Phase 5 起生效）")
     p_tr.add_argument("--language", default="auto", help="auto | Chinese | English | ...")

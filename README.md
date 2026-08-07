@@ -2,7 +2,7 @@
 
 本地离线 Windows 字幕生成工具。架构：**成熟 CLI Core + 薄 PySide6 GUI**。
 
-当前进度：**Phase 1 — CLI Skeleton**
+当前进度：**Phase 2 — Media Pipeline**
 
 ## 环境
 
@@ -19,16 +19,19 @@ cd qwen-subtitle
 uv sync --extra dev
 ```
 
+导出 Silero VAD 到 `models/silero-vad/`（推荐，发布锁定用）：
+
+```powershell
+uv run python scripts/download_models.py --only vad --confirm-download
+```
+
 ## CLI
 
 ```powershell
 uv run qsub doctor
-uv run qsub doctor --json
-
 uv run qsub probe movie.mkv
-uv run qsub probe movie.mkv --json
 
-# Phase 1：创建 job 工作区 + probe（SRT 在 Phase 5）
+# Phase 2：probe → 16k mono WAV → VAD → chunks.json
 uv run qsub transcribe movie.mkv --events ndjson
 ```
 
@@ -58,7 +61,6 @@ uv run python scripts/phase0_spike.py sample.wav --language Chinese
 
 ## 路线图
 
-- Phase 2 — FFmpeg 抽取 / VAD / Chunk
 - Phase 3 — ASR + Resume
 - Phase 4 — Alignment + 时间轴修复
 - Phase 5 — project.json / SRT
