@@ -2,7 +2,7 @@
 
 本地离线 Windows 字幕生成工具。架构：**成熟 CLI Core + 薄 PySide6 GUI**。
 
-当前进度：**Phase 4 — Alignment**
+当前进度：**Phase 5 — Subtitle Engine（首个完整 CLI：`v0.1.0-cli`）**
 
 ## 安装
 
@@ -12,27 +12,22 @@ uv sync --extra dev
 uv run python scripts/download_models.py --only vad --confirm-download
 ```
 
-## CLI
+## 一键转录
 
 ```powershell
 uv run qsub doctor
-
-# Phase 4：… → ASR → ForcedAlign → repair → tokens.json
-uv run qsub transcribe movie.mkv --language Chinese --events ndjson --work-dir $env:TEMP\qsub-job
+uv run qsub transcribe movie.mkv --language Chinese --overwrite --events ndjson
+# → movie.srt（默认 UTF-8 BOM）
 ```
 
-Job 产物要点：
+从 `project.json` 重新导出：
 
-```text
-asr/000000.json
-alignment/000000.json           # 原始 aligner 输出
-alignment_repaired/000000.json  # 修复后
-tokens.json                     # 全局合并 + overlap 去重
+```powershell
+uv run qsub export path\to\job\project.json --output out.srt --overwrite
 ```
-
-取消：在 job 目录写入 `cancel.flag`。
 
 ## 路线图
 
-- Phase 5 — project.json / 字幕分句 / SRT
-- Phase 6+ — 打包 / GUI / Installer
+- Phase 6 — Runtime Packaging
+- Phase 7 — Thin GUI（中文）
+- Phase 8 — Installer

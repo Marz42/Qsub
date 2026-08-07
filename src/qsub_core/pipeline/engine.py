@@ -1,4 +1,4 @@
-"""Pipeline engine — Phase 3: media pipeline + chunk ASR with resume."""
+"""Pipeline engine — Phase 5: full offline CLI through SRT export."""
 
 from __future__ import annotations
 
@@ -34,6 +34,9 @@ from qsub_core.pipeline.workspace import (
     create_job_workspace,
     initial_job_record,
 )
+from qsub_core.project.model import build_project, write_project
+from qsub_core.subtitles.segment import segment_tokens
+from qsub_core.subtitles.srt import validate_srt_invariants, write_srt
 from qsub_core.system.gpu import resolve_device
 from qsub_core.vad.silero import VadError, run_vad
 
@@ -65,10 +68,11 @@ class TranscribeOptions:
     overwrite: bool = False
     events: str = "text"
     log_level: str = "info"
+    encoding: str = "utf-8-bom"
 
 
 class PipelineEngine:
-    """Phase 4: media → ASR → ForcedAlign + repair/merge (Safe Mode, resumable)."""
+    """Phase 5: full CLI pipeline through project.json + SRT export."""
 
     def __init__(self, opts: TranscribeOptions, events: EventEmitter):
         self.opts = opts
@@ -93,6 +97,7 @@ class PipelineEngine:
                 "mode": self.opts.mode,
                 "resume": self.opts.resume,
                 "output": str(self.opts.output) if self.opts.output else None,
+                "encoding": self.opts.encoding,
             },
         )
         if self.opts.resume and self.ws.job_json.is_file():
@@ -116,7 +121,7 @@ class PipelineEngine:
                         for s in job["stages_completed"]
                         if s not in {"asr", "alignment", "subtitle", "export"}
                     ]
-        job["phase"] = "phase4_alignment"
+        job["phase"] = "phase5_subtitle"
         self.ws.write_job(job)
         self.events.emit("job_started", job_id=self.ws.job_id, work_dir=str(self.ws.root))
         log.info("job %s work_dir=%s source=%s", self.ws.job_id, self.ws.root, src)
@@ -156,18 +161,17 @@ class PipelineEngine:
         if code != errors.SUCCESS:
             return code
 
-        overall = (
-            WEIGHTS["probe"]
-            + WEIGHTS["extract"]
-            + WEIGHTS["vad"]
-            + WEIGHTS["asr"]
-            + WEIGHTS["alignment"]
-        )
-        job["status"] = "phase4_alignment_complete"
+        code, srt_path = self._stage_subtitle_export(job, probe, chunks)
+        if code != errors.SUCCESS:
+            return code
+
+        overall = sum(WEIGHTS[k] for k in ("probe", "extract", "vad", "asr", "alignment", "subtitle", "export"))
+        job["status"] = "completed"
         job["notes"] = [
-            "Phase 4: ForcedAlign + timestamp repair + overlap merge complete.",
-            "Subtitle segmentation / SRT arrive in Phase 5.",
+            "Phase 5 complete: canonical project.json + SRT exported.",
         ]
+        if srt_path is not None:
+            job["output_srt"] = str(srt_path)
         self.ws.write_job(job)
 
         elapsed = round(time.perf_counter() - t0, 3)
@@ -175,15 +179,16 @@ class PipelineEngine:
         self.events.emit(
             "completed",
             elapsed_seconds=elapsed,
-            phase="phase4_alignment",
+            phase="phase5_subtitle",
             chunks=len(chunks),
             overall=overall,
-            next="subtitle/SRT (Phase 5)",
+            srt=str(srt_path) if srt_path else None,
         )
         log.info(
-            "job %s phase4 complete chunks=%s in %ss",
+            "job %s complete chunks=%s srt=%s in %ss",
             self.ws.job_id,
             len(chunks),
+            srt_path,
             elapsed,
         )
         return errors.SUCCESS
@@ -209,6 +214,18 @@ class PipelineEngine:
                 self.ws.tokens_json.unlink()
             except OSError:
                 pass
+        if self.ws.project_json.exists():
+            try:
+                self.ws.project_json.unlink()
+            except OSError:
+                pass
+        for name in ("output.srt",):
+            p = self.ws.root / name
+            if p.exists():
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
 
     def _fail(self, job: dict[str, Any], code: int, message: str) -> int:
         job["status"] = "failed" if code != errors.CANCELED else "canceled"
@@ -729,6 +746,123 @@ class PipelineEngine:
         self.events.emit("artifact", kind="tokens", path=str(self.ws.tokens_json))
         return errors.SUCCESS
 
+    def _stage_subtitle_export(
+        self,
+        job: dict[str, Any],
+        probe: dict[str, Any],
+        chunks: list[ChunkPlan],
+    ) -> tuple[int, Path | None]:
+        assert self.ws is not None
+        self.events.emit("stage_started", stage="subtitle")
+        base = (
+            WEIGHTS["probe"]
+            + WEIGHTS["extract"]
+            + WEIGHTS["vad"]
+            + WEIGHTS["asr"]
+            + WEIGHTS["alignment"]
+        )
+        self.events.emit("progress", stage="subtitle", current=0, total=1, overall=base)
+
+        tok_payload = load_json(self.ws.tokens_json)
+        if not isinstance(tok_payload, dict) or "tokens" not in tok_payload:
+            return self._fail(job, errors.PROJECT_FAILURE, "missing tokens.json"), None
+
+        tokens = list(tok_payload.get("tokens") or [])
+        subtitles = segment_tokens(tokens)
+        inv = validate_srt_invariants(subtitles)
+        if inv:
+            return (
+                self._fail(
+                    job,
+                    errors.TIMESTAMP_VALIDATION_FAILURE,
+                    f"subtitle invariants failed: {inv[0]}",
+                ),
+                None,
+            )
+
+        # Language from first ASR chunk if available
+        language = None
+        if chunks:
+            asr0 = load_json(asr_chunk_path(self.ws.asr_dir, chunks[0].id))
+            if isinstance(asr0, dict):
+                language = asr0.get("language")
+        if language is None and self.opts.language.lower() != "auto":
+            language = self.opts.language
+
+        stream = (probe.get("selected_audio_stream") or {}) if probe else {}
+        project = build_project(
+            source_path=str(job["source"]["path"]),
+            duration=probe.get("duration"),
+            audio_stream=stream.get("index"),
+            language=language,
+            tokens=tokens,
+            subtitles=subtitles,
+        )
+        try:
+            write_project(self.ws.project_json, project)
+        except OSError as exc:
+            return self._fail(job, errors.PROJECT_FAILURE, str(exc)), None
+
+        stages = list(job.get("stages_completed") or [])
+        if "subtitle" not in stages:
+            stages.append("subtitle")
+        job["stages_completed"] = stages
+        job["subtitles"] = {"count": len(subtitles)}
+        self.ws.write_job(job)
+        self.events.emit(
+            "progress",
+            stage="subtitle",
+            current=1,
+            total=1,
+            overall=base + WEIGHTS["subtitle"],
+        )
+        self.events.emit("stage_finished", stage="subtitle")
+        self.events.emit("artifact", kind="project", path=str(self.ws.project_json))
+
+        # Export SRT
+        self.events.emit("stage_started", stage="export")
+        out = self.opts.output
+        if out is None:
+            src = Path(job["source"]["path"])
+            out = src.with_suffix(".srt")
+        out = out.expanduser().resolve()
+        if out.exists() and not self.opts.overwrite:
+            # Allow overwrite when output is the same completed path on resume
+            same_job_out = job.get("output_srt") and Path(str(job["output_srt"])) == out
+            if not (self.opts.resume and same_job_out):
+                return (
+                    self._fail(
+                        job,
+                        errors.INVALID_ARGS,
+                        f"output exists (use --overwrite): {out}",
+                    ),
+                    None,
+                )
+
+        encoding = self.opts.encoding if self.opts.encoding in {"utf-8", "utf-8-bom"} else "utf-8-bom"
+        try:
+            write_srt(out, subtitles, encoding=encoding)  # type: ignore[arg-type]
+            # Also keep a copy inside the job workspace
+            write_srt(self.ws.root / "output.srt", subtitles, encoding=encoding)  # type: ignore[arg-type]
+        except OSError as exc:
+            return self._fail(job, errors.EXPORT_FAILURE, str(exc)), None
+
+        if "export" not in stages:
+            stages.append("export")
+        job["stages_completed"] = stages
+        job["output_srt"] = str(out)
+        self.ws.write_job(job)
+        self.events.emit(
+            "progress",
+            stage="export",
+            current=1,
+            total=1,
+            overall=base + WEIGHTS["subtitle"] + WEIGHTS["export"],
+        )
+        self.events.emit("stage_finished", stage="export")
+        self.events.emit("artifact", kind="srt", path=str(out))
+        return errors.SUCCESS, out
+
 
 def _code_name(code: int) -> str:
     mapping = {
@@ -744,6 +878,8 @@ def _code_name(code: int) -> str:
         errors.ASR_FAILURE: "ASR_FAILURE",
         errors.ALIGNMENT_FAILURE: "ALIGNMENT_FAILURE",
         errors.TIMESTAMP_VALIDATION_FAILURE: "TIMESTAMP_VALIDATION_FAILURE",
+        errors.PROJECT_FAILURE: "PROJECT_FAILURE",
+        errors.EXPORT_FAILURE: "EXPORT_FAILURE",
         errors.CANCELED: "CANCELED",
     }
     return mapping.get(code, f"CODE_{code}")
