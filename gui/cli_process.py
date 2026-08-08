@@ -20,6 +20,7 @@ class CliProcess(QObject):
         super().__init__(parent)
         self._proc: subprocess.Popen[str] | None = None
         self._work_dir: Path | None = None
+        self._item_work_dir: Path | None = None
         self._reader: threading.Thread | None = None
 
     @property
@@ -29,6 +30,18 @@ class CliProcess(QObject):
     @property
     def work_dir(self) -> Path | None:
         return self._work_dir
+
+    def set_work_dir(self, path: Path | None) -> None:
+        """Update cancel target (e.g. after batch_started reveals the real root)."""
+        self._work_dir = path
+
+    @property
+    def item_work_dir(self) -> Path | None:
+        return self._item_work_dir
+
+    def set_item_work_dir(self, path: Path | None) -> None:
+        """Current batch item workspace (also receives cancel.flag)."""
+        self._item_work_dir = path
 
     def start(
         self,
@@ -41,6 +54,7 @@ class CliProcess(QObject):
         if self.running:
             raise RuntimeError("process already running")
         self._work_dir = work_dir
+        self._item_work_dir = None
         merged = os.environ.copy()
         if env:
             merged.update(env)
@@ -69,10 +83,12 @@ class CliProcess(QObject):
         threading.Thread(target=self._wait, daemon=True).start()
 
     def request_cancel(self) -> None:
-        """Spec §30: write cancel.flag so the CLI exits cleanly between chunks."""
-        if self._work_dir is not None:
+        """Write cancel.flag on job/batch root and current item work dir."""
+        for root in (self._work_dir, self._item_work_dir):
+            if root is None:
+                continue
             try:
-                (self._work_dir / "cancel.flag").write_text("1", encoding="utf-8")
+                (root / "cancel.flag").write_text("1", encoding="utf-8")
             except OSError:
                 pass
 
@@ -121,7 +137,12 @@ ERROR_MESSAGES = {
     ),
     "MODEL_MISSING": (
         "模型缺失",
-        "未找到本地模型文件。请将模型放到 models/ 目录。\n\n错误代码：MODEL_MISSING",
+        "未找到本地模型文件。安装包默认不附带 ASR/对齐模型。\n\n"
+        "请在安装目录（或便携根目录）联网运行一次：\n"
+        "  download-models.cmd\n"
+        "或将权重放到 models\\Qwen3-ASR-0.6B 与 models\\Qwen3-ForcedAligner-0.6B。\n"
+        "下载完成后可断网使用；转录不会自动联网下载。\n\n"
+        "错误代码：MODEL_MISSING",
     ),
     "FFMPEG_FAILURE": (
         "音频提取失败",

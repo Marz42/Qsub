@@ -1,4 +1,4 @@
-"""qsub CLI — argparse only (Spec §21–§22)."""
+"""qsub CLI — argparse only (Spec §21–§22). Batch = v0.2 extension."""
 
 from __future__ import annotations
 
@@ -11,50 +11,30 @@ from qsub_core import __version__, errors
 from qsub_core.events import EventEmitter
 from qsub_core.logging_util import setup_logging
 from qsub_core.media.probe import ProbeError, probe_media
+from qsub_core.pipeline.batch import BatchRunner, BatchSharedOptions, load_manifest
 from qsub_core.pipeline.engine import PipelineEngine, TranscribeOptions
 from qsub_core.project.model import load_project
 from qsub_core.subtitles.srt import write_srt
 from qsub_core.system.doctor import run_doctor
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="qsub",
-        description="QwenSubtitle CLI — 本地离线字幕生成",
-    )
-    parser.add_argument("--version", action="version", version=f"QwenSubtitle {__version__}")
-    sub = parser.add_subparsers(dest="command")
-
-    p_doc = sub.add_parser("doctor", help="检查运行环境与模型")
-    p_doc.add_argument("--json", action="store_true", help="输出 JSON（供 GUI 使用）")
-
-    p_probe = sub.add_parser("probe", help="探测媒体音轨信息")
-    p_probe.add_argument("input", type=Path, help="视频或音频文件")
-    p_probe.add_argument("--json", action="store_true", help="输出 JSON")
-
-    p_tr = sub.add_parser(
-        "transcribe",
-        help="转录并生成 SRT（完整 CLI：媒体 → ASR → Align → 分句 → 导出）",
-    )
-    p_tr.add_argument("input", type=Path, help="输入媒体文件")
-    p_tr.add_argument("--output", type=Path, default=None, help="输出 .srt 路径（默认与输入同名）")
-    p_tr.add_argument("--language", default="auto", help="auto | Chinese | English | ...")
-    p_tr.add_argument("--device", choices=["auto", "cuda", "cpu"], default="auto")
-    p_tr.add_argument("--audio-stream", default="auto", help="auto 或音轨 index")
-    p_tr.add_argument("--mode", choices=["safe"], default="safe")
-    p_tr.add_argument("--resume", dest="resume", action="store_true", default=True)
-    p_tr.add_argument("--no-resume", dest="resume", action="store_false")
-    p_tr.add_argument("--work-dir", type=Path, default=None)
-    p_tr.add_argument("--keep-work", action="store_true")
-    p_tr.add_argument("--overwrite", action="store_true")
-    p_tr.add_argument("--encoding", choices=["utf-8", "utf-8-bom"], default="utf-8-bom")
-    p_tr.add_argument("--events", choices=["text", "ndjson"], default="text")
-    p_tr.add_argument(
+def _add_transcribe_shared_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--language", default="auto", help="auto | Chinese | English | ...")
+    parser.add_argument("--device", choices=["auto", "cuda", "cpu"], default="auto")
+    parser.add_argument("--audio-stream", default="auto", help="auto 或音轨 index")
+    parser.add_argument("--mode", choices=["safe"], default="safe")
+    parser.add_argument("--resume", dest="resume", action="store_true", default=True)
+    parser.add_argument("--no-resume", dest="resume", action="store_false")
+    parser.add_argument("--keep-work", action="store_true")
+    parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--encoding", choices=["utf-8", "utf-8-bom"], default="utf-8-bom")
+    parser.add_argument("--events", choices=["text", "ndjson"], default="text")
+    parser.add_argument(
         "--log-level",
         choices=["debug", "info", "warning", "error"],
         default="info",
     )
-    seg = p_tr.add_argument_group("分句参数（识别不变，只影响字幕切条）")
+    seg = parser.add_argument_group("分句参数（识别不变，只影响字幕切条）")
     seg.add_argument(
         "--pause-gap",
         type=float,
@@ -98,6 +78,89 @@ def build_parser() -> argparse.ArgumentParser:
         help="逗号/分号切句阈值：当前时长≥ target-max×该值 才在逗号处切。"
         "老在逗号切开→调大（如 0.85）。范围 0–1，默认 0.6",
     )
+
+
+def _shared_from_args(args: argparse.Namespace) -> BatchSharedOptions:
+    return BatchSharedOptions(
+        language=args.language,
+        device=args.device,
+        audio_stream=str(args.audio_stream),
+        mode=args.mode,
+        resume=bool(args.resume),
+        keep_work=bool(args.keep_work),
+        overwrite=bool(args.overwrite),
+        encoding=args.encoding,
+        events=args.events,
+        log_level=args.log_level,
+        pause_gap=float(args.pause_gap),
+        target_min=float(args.target_min),
+        target_max=float(args.target_max),
+        min_cue_duration=float(args.min_cue_duration),
+        hard_max_duration=float(args.hard_max_duration),
+        clause_break_ratio=float(args.clause_break_ratio),
+        stop_on_error=bool(getattr(args, "stop_on_error", False)),
+        output_dir=getattr(args, "output_dir", None),
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="qsub",
+        description="QwenSubtitle CLI — 本地离线字幕生成",
+    )
+    parser.add_argument("--version", action="version", version=f"QwenSubtitle {__version__}")
+    sub = parser.add_subparsers(dest="command")
+
+    p_doc = sub.add_parser("doctor", help="检查运行环境与模型")
+    p_doc.add_argument("--json", action="store_true", help="输出 JSON（供 GUI 使用）")
+
+    p_probe = sub.add_parser("probe", help="探测媒体音轨信息")
+    p_probe.add_argument("input", type=Path, help="视频或音频文件")
+    p_probe.add_argument("--json", action="store_true", help="输出 JSON")
+
+    p_tr = sub.add_parser(
+        "transcribe",
+        help="转录并生成 SRT（完整 CLI：媒体 → ASR → Align → 分句 → 导出）",
+    )
+    p_tr.add_argument("input", type=Path, help="输入媒体文件")
+    p_tr.add_argument("--output", type=Path, default=None, help="输出 .srt 路径（默认与输入同名）")
+    p_tr.add_argument("--work-dir", type=Path, default=None)
+    _add_transcribe_shared_args(p_tr)
+
+    p_batch = sub.add_parser(
+        "batch",
+        help="批量转录（顺序队列，v0.2）：多文件 / 目录 → 多个 SRT",
+    )
+    p_batch.add_argument(
+        "inputs",
+        nargs="*",
+        type=Path,
+        help="媒体文件或目录（可多个）",
+    )
+    p_batch.add_argument(
+        "--manifest",
+        type=Path,
+        default=None,
+        help="路径列表文件（JSON 或每行一个路径）",
+    )
+    p_batch.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="统一输出目录（默认各文件旁 .srt）",
+    )
+    p_batch.add_argument(
+        "--work-root",
+        type=Path,
+        default=None,
+        help="批量作业根目录（默认 %%LOCALAPPDATA%%\\QwenSubtitle\\batches\\<id>）",
+    )
+    p_batch.add_argument(
+        "--stop-on-error",
+        action="store_true",
+        help="任一项失败则停止后续项（默认继续）",
+    )
+    _add_transcribe_shared_args(p_batch)
 
     p_ex = sub.add_parser("export", help="从 project.json 导出字幕")
     p_ex.add_argument("project", type=Path)
@@ -168,6 +231,25 @@ def cmd_transcribe(args: argparse.Namespace) -> int:
     return PipelineEngine(opts, events).run()
 
 
+def cmd_batch(args: argparse.Namespace) -> int:
+    setup_logging(args.log_level)
+    events = EventEmitter(mode=args.events)
+    inputs: list[Path] = list(args.inputs or [])
+    if args.manifest is not None:
+        try:
+            inputs.extend(load_manifest(args.manifest))
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"manifest error: {exc}", file=sys.stderr)
+            return errors.INVALID_ARGS
+    if not inputs:
+        print("batch: provide inputs and/or --manifest", file=sys.stderr)
+        return errors.INVALID_ARGS
+
+    shared = _shared_from_args(args)
+    runner = BatchRunner(events, shared)
+    return runner.run(inputs, work_root=args.work_root)
+
+
 def cmd_export(args: argparse.Namespace) -> int:
     try:
         project = load_project(args.project)
@@ -212,6 +294,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_probe(args)
     if args.command == "transcribe":
         return cmd_transcribe(args)
+    if args.command == "batch":
+        return cmd_batch(args)
     if args.command == "export":
         return cmd_export(args)
 

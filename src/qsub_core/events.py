@@ -52,4 +52,18 @@ def _format_text(event: dict[str, Any]) -> str:
         return f"[job] started {event.get('job_id')}"
     if t == "completed":
         return f"[job] completed in {event.get('elapsed_seconds')}s"
+    if t == "batch_started":
+        return f"[batch] started id={event.get('batch_id')} total={event.get('total')}"
+    if t == "item_started":
+        return f"[batch] item {event.get('index')}/{event.get('total')} start {event.get('path')}"
+    if t == "item_finished":
+        st = event.get("status") or ("ok" if event.get("ok") else "failed")
+        return f"[batch] item {event.get('index')}/{event.get('total')} {st}"
+    if t == "batch_progress":
+        return f"[batch] progress {event.get('current')}/{event.get('total')}"
+    if t == "batch_completed":
+        return (
+            f"[batch] done ok={event.get('succeeded')} "
+            f"fail={event.get('failed')} cancel={event.get('canceled')}"
+        )
     return f"[{t}] " + " ".join(f"{k}={v}" for k, v in event.items() if k not in {"v", "type"})

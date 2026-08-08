@@ -9,4 +9,4 @@ Source: Google Fonts **Noto Sans SC** (SIL Open Font License 1.1 — see `OFL.tx
 | `NotoSansSC-Bold.ttf` | 700 | Section bars, buttons, field labels |
 | `NotoSansSC-Black.ttf` | 900 | Hero display wordmark only |
 
-Do not flatten everything to Bold. Installer / portable runtime should copy this folder under the app root (Phase 8 packaging next).
+Do not flatten everything to Bold. Portable / installer builds copy this tree to `<root>/gui/fonts/` via `scripts/build_runtime.py`； the wheel also force-includes these files.

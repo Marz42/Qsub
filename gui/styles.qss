@@ -48,6 +48,11 @@ QWidget#SubNav {
     max-height: 26px;
 }
 
+QPushButton#SubNavLink:checked {
+    color: {{SIGNAL}};
+    font-weight: 700;
+}
+
 QPushButton#SubNavLink {
     background: transparent;
     border: none;
@@ -142,6 +147,28 @@ QComboBox::drop-down {
     width: 18px;
 }
 
+/* Without this, styled QComboBox popups often render blank under Fusion/QSS. */
+QComboBox QAbstractItemView {
+    background-color: {{SURFACE}};
+    color: {{INK}};
+    border: 1px solid {{CHROME_INDIGO}};
+    selection-background-color: {{CANVAS_SOFT}};
+    selection-color: {{INK}};
+    outline: 0;
+}
+
+QComboBox QAbstractItemView::item {
+    min-height: 22px;
+    padding: 2px 6px;
+    color: {{INK}};
+    background-color: {{SURFACE}};
+}
+
+QComboBox QAbstractItemView::item:selected {
+    background-color: {{CANVAS_SOFT}};
+    color: {{INK}};
+}
+
 QPushButton {
     font-family: "{{FONT_FAMILY}}";
     font-weight: 700;
@@ -234,11 +261,20 @@ QDialog QGroupBox {
 QLabel#DropTitle {
     color: {{SURFACE}};
     font-weight: 900;
-    font-size: 28px;
+    font-size: 22px;
 }
 
 QLabel#DropHint {
     color: {{INK}};
     font-weight: 500;
-    font-size: 13px;
+    font-size: 12px;
+}
+
+QScrollArea#BodyScroll {
+    background-color: {{CANVAS}};
+    border: none;
+}
+
+QScrollArea#BodyScroll > QWidget > QWidget {
+    background-color: {{CANVAS}};
 }
