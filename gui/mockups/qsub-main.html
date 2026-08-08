@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QwenSubtitle — Nintendo 2001 UI Mock (Noto Sans SC)</title>
+  <style>
+    @font-face {
+      font-family: "Noto Sans SC";
+      src: url("../fonts/NotoSansSC/NotoSansSC-Regular.ttf") format("truetype");
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "Noto Sans SC";
+      src: url("../fonts/NotoSansSC/NotoSansSC-Medium.ttf") format("truetype");
+      font-weight: 500;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "Noto Sans SC";
+      src: url("../fonts/NotoSansSC/NotoSansSC-Bold.ttf") format("truetype");
+      font-weight: 700;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "Noto Sans SC";
+      src: url("../fonts/NotoSansSC/NotoSansSC-Black.ttf") format("truetype");
+      font-weight: 900;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    :root {
+      --primary: #e60012;
+      --signal: #f68d1f;
+      --amber: #ecab37;
+      --nav-gold: #e48600;
+      --canvas: #7a8aba;
+      --canvas-soft: #9fbee7;
+      --lavender: #acace7;
+      --periwinkle: #8ba1d4;
+      --chrome-indigo: #3d4f97;
+      --muted-indigo: #60619c;
+      --platinum: #dedede;
+      --surface: #ffffff;
+      --carbon: #21242e;
+      --hairline: #5a5f8c;
+      --ink: #21242e;
+      --ink-soft: #3d4f97;
+      --on-primary: #ffffff;
+      --font: "Noto Sans SC", "Microsoft YaHei UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 24px 12px 48px;
+      background: #4a5678;
+      font-family: var(--font);
+      font-weight: 400;
+      color: var(--ink);
+    }
+    .machine {
+      width: 820px;
+      background: var(--canvas);
+      border: 2px solid var(--chrome-indigo);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.35),
+        inset 0 -1px 0 rgba(0,0,0,.25);
+      clip-path: polygon(
+        12px 0, calc(100% - 12px) 0, 100% 12px,
+        100% calc(100% - 12px), calc(100% - 12px) 100%,
+        12px 100%, 0 calc(100% - 12px), 0 12px
+      );
+    }
+    .nav {
+      height: 34px;
+      background: var(--carbon);
+      background-image: radial-gradient(rgba(255,255,255,.06) 0.6px, transparent 0.7px);
+      background-size: 3px 3px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+    }
+    .brand { display: flex; align-items: center; gap: 8px; }
+    .pill {
+      background: var(--surface);
+      color: var(--primary);
+      font-weight: 900;
+      font-size: 14px;
+      line-height: 1;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      border: 1px solid var(--primary);
+    }
+    .brand-name {
+      color: var(--nav-gold);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .nav-meta {
+      color: var(--canvas-soft);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.2px;
+    }
+    .nav-meta strong { color: #7dffa0; font-weight: 700; }
+    .subnav {
+      background: var(--canvas-soft);
+      padding: 5px 12px;
+      display: flex;
+      gap: 14px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--chrome-indigo);
+    }
+    .subnav a {
+      color: var(--ink);
+      text-decoration: none;
+      border-bottom: 1px dotted transparent;
+    }
+    .subnav a:hover { border-bottom-color: var(--ink-soft); color: var(--ink-soft); }
+    .body { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+    .plate {
+      position: relative;
+      border: 1px solid var(--chrome-indigo);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.45),
+        0 1px 0 rgba(0,0,0,.2);
+    }
+    .chamfer {
+      clip-path: polygon(
+        8px 0, calc(100% - 8px) 0, 100% 8px,
+        100% calc(100% - 8px), calc(100% - 8px) 100%,
+        8px 100%, 0 calc(100% - 8px), 0 8px
+      );
+    }
+    .hero {
+      background: var(--lavender);
+      min-height: 118px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 16px;
+      text-align: center;
+    }
+    .hero h1 {
+      margin: 0;
+      font-size: 34px;
+      font-weight: 900;
+      color: var(--surface);
+      text-shadow: 2px 2px 0 var(--chrome-indigo), -1px 0 0 var(--carbon);
+      letter-spacing: 1px;
+    }
+    .hero p {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ink);
+    }
+    .row2 {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 12px;
+    }
+    .section-bar {
+      background: var(--canvas);
+      color: var(--ink);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--chrome-indigo);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .section-bar::before {
+      content: "";
+      width: 10px; height: 10px;
+      background:
+        linear-gradient(var(--ink-soft) 1px, transparent 1px) 0 0 / 3px 3px,
+        linear-gradient(90deg, var(--ink-soft) 1px, transparent 1px) 0 0 / 3px 3px;
+      opacity: .8;
+    }
+    .form-panel { background: var(--platinum); }
+    .form-body { padding: 12px 14px; }
+    .field {
+      display: grid;
+      grid-template-columns: 72px 1fr;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+    .field label { font-weight: 700; color: var(--ink); }
+    .field input, .field select {
+      height: 26px;
+      border: 1px solid var(--hairline);
+      border-radius: 2px;
+      background: var(--surface);
+      color: var(--ink);
+      font-family: var(--font);
+      font-size: 12px;
+      font-weight: 400;
+      padding: 0 6px;
+      width: 100%;
+    }
+    .field select { border-color: var(--carbon); height: 28px; }
+    .info-box { background: var(--surface); }
+    .info-tab {
+      display: inline-block;
+      background: var(--amber);
+      color: var(--carbon);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 2px 2px 0 0;
+      margin: 8px 0 0 10px;
+    }
+    .info-body { padding: 10px 12px 12px; font-size: 12px; line-height: 1.45; font-weight: 400; }
+    .info-body dt { color: var(--ink-soft); font-weight: 700; font-size: 11px; }
+    .info-body dd { margin: 0 0 8px; font-weight: 400; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border: 1px solid var(--chrome-indigo);
+      border-radius: 2px;
+      font-family: var(--font);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 8px 14px;
+      cursor: default;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 1px 0 rgba(0,0,0,.25);
+    }
+    .btn-amber { background: var(--amber); color: var(--carbon); }
+    .btn-signal {
+      background: var(--signal);
+      color: var(--on-primary);
+      border-color: #c56a10;
+      padding: 10px 18px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .btn-carbon {
+      background: var(--carbon);
+      color: var(--on-primary);
+      border-color: #000;
+      border-radius: 0;
+      font-weight: 700;
+    }
+    .btn-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .progress-plate { background: var(--periwinkle); }
+    .progress-body { padding: 12px 14px; }
+    .status-line {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--ink-soft);
+      margin-bottom: 8px;
+    }
+    .status-line .count { font-weight: 700; color: var(--ink); }
+    .track {
+      height: 14px;
+      background: var(--muted-indigo);
+      border: 1px solid var(--chrome-indigo);
+      box-shadow: inset 0 1px 0 rgba(0,0,0,.35);
+      position: relative;
+    }
+    .fill {
+      height: 100%;
+      width: 62%;
+      background: var(--signal);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.35);
+    }
+    .result-plate { background: var(--platinum); }
+    .result-body { padding: 10px 12px 12px; }
+    .news-row {
+      background: var(--surface);
+      border-radius: 4px;
+      border: 1px solid var(--hairline);
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--ink-soft);
+    }
+    .news-row .ok { font-weight: 700; color: var(--ink); }
+    .chev {
+      width: 18px; height: 18px;
+      background: var(--signal);
+      color: #fff;
+      border-radius: 2px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 900;
+      flex: 0 0 auto;
+    }
+    .preview {
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 12px;
+      font-weight: 400;
+      line-height: 1.4;
+      color: var(--ink);
+      max-height: 88px;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+    .footer {
+      background: var(--carbon);
+      color: var(--canvas-soft);
+      font-size: 10px;
+      font-weight: 400;
+      padding: 10px 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .note {
+      width: 820px;
+      margin-top: 14px;
+      color: #d7e0f0;
+      font-size: 12px;
+      font-weight: 400;
+      line-height: 1.5;
+    }
+    .note strong { font-weight: 700; color: #fff; }
+    .weight-legend {
+      width: 820px;
+      margin-top: 10px;
+      background: rgba(0,0,0,.22);
+      border: 1px solid rgba(255,255,255,.12);
+      padding: 10px 12px;
+      color: #e8eef8;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .weight-legend code {
+      background: rgba(0,0,0,.3);
+      padding: 1px 5px;
+      border-radius: 2px;
+      font-family: Consolas, monospace;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div>
+    <div class="machine" aria-label="QwenSubtitle main window mock">
+      <header class="nav">
+        <div class="brand">
+          <span class="pill">Q</span>
+          <span class="brand-name">QwenSubtitle</span>
+        </div>
+        <div class="nav-meta">本地离线字幕机 · <strong>READY</strong></div>
+      </header>
+      <nav class="subnav">
+        <a href="#task">任务</a>
+        <a href="#settings">设置</a>
+        <a href="#logs">日志目录</a>
+      </nav>
+      <main class="body">
+        <section class="plate chamfer hero">
+          <h1>放入媒体</h1>
+          <p>将视频 / 音频放入此处 · 或按下「选择文件」</p>
+          <button class="btn btn-amber" type="button">选择文件</button>
+        </section>
+
+        <div class="row2" id="task">
+          <section class="plate form-panel">
+            <div class="section-bar">任务</div>
+            <div class="form-body">
+              <div class="field"><label>文件</label><input value="D:\sample\talk.mp4" readonly /></div>
+              <div class="field"><label>时长</label><input value="12:42.300" readonly /></div>
+              <div class="field">
+                <label>音轨</label>
+                <select><option>#1 aac 2ch zh（默认）</option></select>
+              </div>
+              <div class="field">
+                <label>语言</label>
+                <select><option>中文</option><option>自动识别</option><option>英文</option></select>
+              </div>
+              <div class="field"><label>输出</label><input value="D:\sample\talk.srt" /></div>
+            </div>
+          </section>
+
+          <aside class="plate info-box">
+            <div class="info-tab">状态</div>
+            <div class="info-body">
+              <dl>
+                <dt>设备</dt><dd>CUDA · RTX 4060</dd>
+                <dt>输出编码</dt><dd>UTF-8 BOM</dd>
+                <dt>分句</dt><dd>停顿 0.45s · 推荐最长 6s</dd>
+              </dl>
+              <button class="btn btn-carbon" type="button" id="settings">设置…</button>
+            </div>
+          </aside>
+        </div>
+
+        <section class="plate progress-plate">
+          <div class="section-bar">进度</div>
+          <div class="progress-body">
+            <div class="status-line">语音识别… <span class="count">5 / 8</span></div>
+            <div class="track"><div class="fill"></div></div>
+            <div class="btn-row" style="margin-top:12px">
+              <button class="btn btn-signal" type="button">生成字幕</button>
+              <button class="btn btn-carbon" type="button">取消</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="plate result-plate">
+          <div class="section-bar">结果</div>
+          <div class="result-body">
+            <div class="news-row">
+              <span><span class="ok">字幕已生成</span> · talk.srt</span>
+              <span class="chev">▶</span>
+            </div>
+            <div class="preview">1
+00:00:01,120 --&gt; 00:00:04,860
+今天我们来讨论一下这个问题。
+
+2
+00:00:05,020 --&gt; 00:00:08,400
+先看第一段音频的识别结果。</div>
+            <div class="btn-row" style="margin-top:10px">
+              <button class="btn btn-amber" type="button">打开字幕</button>
+              <button class="btn btn-amber" type="button">打开文件夹</button>
+              <button class="btn btn-carbon" type="button" id="logs">查看日志</button>
+            </div>
+          </div>
+        </section>
+      </main>
+      <footer class="footer">
+        <span>work · %TEMP%\qsub-gui-…</span>
+        <span>QwenSubtitle 0.1.0 · CLI subprocess</span>
+      </footer>
+    </div>
+
+    <div class="weight-legend">
+      <strong>字重对照（Noto Sans SC，非统一 Bold）</strong><br />
+      <code>900 Black</code> Hero「放入媒体」、Q pill、chevron<br />
+      <code>700 Bold</code> 分区条、按钮、字段标签、顶栏名<br />
+      <code>500 Medium</code> 副文案、状态行、结果次要文字<br />
+      <code>400 Regular</code> 表单值、预览正文、页脚
+    </div>
+    <p class="note">
+      字体来自仓库 <code>gui/fonts/NotoSansSC/</code>（OFL）。用浏览器直接打开本文件即可预览。
+      若字重看起来不对，请硬刷新（Ctrl+F5）。满意后告诉我，再落到 PySide6。
+    </p>
+  </div>
+</body>
+</html>

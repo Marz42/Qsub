@@ -1,0 +1,244 @@
+/* QwenSubtitle — Nintendo.com 2001 chrome (DESIGN-nintendo-2001.md) */
+
+QMainWindow, QDialog {
+    background-color: {{CANVAS}};
+    color: {{INK}};
+    font-family: "{{FONT_FAMILY}}";
+    font-size: 12px;
+    font-weight: 400;
+}
+
+QWidget#CentralRoot {
+    background-color: {{CANVAS}};
+}
+
+QWidget#NavBar {
+    background-color: {{CARBON}};
+    min-height: 34px;
+    max-height: 34px;
+}
+
+QLabel#BrandPill {
+    background-color: {{SURFACE}};
+    color: {{PRIMARY}};
+    font-weight: 900;
+    font-size: 14px;
+    padding: 3px 10px;
+    border: 1px solid {{PRIMARY}};
+    border-radius: 999px;
+}
+
+QLabel#BrandName {
+    color: {{NAV_GOLD}};
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 1px;
+}
+
+QLabel#NavMeta {
+    color: {{CANVAS_SOFT}};
+    font-weight: 500;
+    font-size: 11px;
+}
+
+QWidget#SubNav {
+    background-color: {{CANVAS_SOFT}};
+    border-bottom: 1px solid {{CHROME_INDIGO}};
+    min-height: 26px;
+    max-height: 26px;
+}
+
+QPushButton#SubNavLink {
+    background: transparent;
+    border: none;
+    color: {{INK}};
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    padding: 2px 8px;
+}
+
+QPushButton#SubNavLink:hover {
+    color: {{INK_SOFT}};
+}
+
+QWidget#FooterBar {
+    background-color: {{CARBON}};
+    min-height: 28px;
+    max-height: 28px;
+}
+
+QLabel#FooterText {
+    color: {{CANVAS_SOFT}};
+    font-size: 10px;
+    font-weight: 400;
+}
+
+QGroupBox {
+    background-color: {{PLATINUM}};
+    border: 1px solid {{CHROME_INDIGO}};
+    margin-top: 14px;
+    padding: 10px 8px 8px 8px;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    color: {{INK}};
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 8px;
+    padding: 2px 8px;
+    background-color: {{CANVAS}};
+    color: {{INK}};
+    font-weight: 700;
+    font-size: 11px;
+}
+
+QGroupBox#ProgressPlate {
+    background-color: {{PERIWINKLE}};
+}
+
+QGroupBox#StatusBox {
+    background-color: {{SURFACE}};
+}
+
+QLabel#FieldLabel {
+    font-weight: 700;
+    font-size: 12px;
+    color: {{INK}};
+}
+
+QLabel#StatusLine {
+    color: {{INK_SOFT}};
+    font-weight: 500;
+    font-size: 12px;
+}
+
+QLabel#HintText {
+    color: {{INK_SOFT}};
+    font-weight: 400;
+    font-size: 11px;
+}
+
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit {
+    background-color: {{SURFACE}};
+    color: {{INK}};
+    border: 1px solid {{HAIRLINE}};
+    border-radius: 2px;
+    padding: 3px 6px;
+    font-weight: 400;
+    font-size: 12px;
+    selection-background-color: {{CANVAS_SOFT}};
+}
+
+QComboBox {
+    border: 1px solid {{CARBON}};
+    min-height: 22px;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 18px;
+}
+
+QPushButton {
+    font-family: "{{FONT_FAMILY}}";
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    border: 1px solid {{CHROME_INDIGO}};
+    border-radius: 2px;
+    padding: 7px 12px;
+}
+
+QPushButton#BtnAmber {
+    background-color: {{AMBER}};
+    color: {{CARBON}};
+}
+
+QPushButton#BtnAmber:hover {
+    background-color: {{NAV_GOLD}};
+}
+
+QPushButton#BtnAmber:disabled {
+    background-color: {{MUTED_INDIGO}};
+    color: {{PLATINUM}};
+}
+
+QPushButton#BtnSignal {
+    background-color: {{SIGNAL}};
+    color: {{ON_PRIMARY}};
+    border-color: #c56a10;
+    padding: 9px 16px;
+    font-size: 12px;
+}
+
+QPushButton#BtnSignal:hover {
+    background-color: {{NAV_GOLD}};
+}
+
+QPushButton#BtnSignal:disabled {
+    background-color: {{MUTED_INDIGO}};
+    color: {{PLATINUM}};
+    border-color: {{CHROME_INDIGO}};
+}
+
+QPushButton#BtnCarbon {
+    background-color: {{CARBON}};
+    color: {{ON_PRIMARY}};
+    border-color: #000000;
+    border-radius: 0px;
+}
+
+QPushButton#BtnCarbon:hover {
+    background-color: #2c3040;
+}
+
+QPushButton#BtnCarbon:disabled {
+    background-color: {{MUTED_INDIGO}};
+    color: {{PLATINUM}};
+}
+
+QProgressBar {
+    border: 1px solid {{CHROME_INDIGO}};
+    background-color: {{MUTED_INDIGO}};
+    text-align: center;
+    color: {{ON_PRIMARY}};
+    font-weight: 700;
+    font-size: 10px;
+    min-height: 14px;
+    max-height: 14px;
+}
+
+QProgressBar::chunk {
+    background-color: {{SIGNAL}};
+}
+
+QCheckBox {
+    font-weight: 400;
+    font-size: 12px;
+    color: {{INK}};
+    spacing: 6px;
+}
+
+QScrollArea {
+    border: none;
+    background: transparent;
+}
+
+QDialog QGroupBox {
+    background-color: {{PLATINUM}};
+}
+
+QLabel#DropTitle {
+    color: {{SURFACE}};
+    font-weight: 900;
+    font-size: 28px;
+}
+
+QLabel#DropHint {
+    color: {{INK}};
+    font-weight: 500;
+    font-size: 13px;
+}

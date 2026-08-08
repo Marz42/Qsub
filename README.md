@@ -2,7 +2,7 @@
 
 本地离线 Windows 字幕生成工具。架构：**成熟 CLI Core + 薄 PySide6 GUI**。
 
-当前进度：**Phase 9 — Acceptance**
+当前进度：**Phase 9 — Acceptance**（GUI：Nintendo 2001 chrome + Noto Sans SC）
 
 ## 开发安装
 

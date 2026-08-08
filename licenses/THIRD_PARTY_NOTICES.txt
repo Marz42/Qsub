@@ -11,6 +11,7 @@ resolved from pyproject.toml / uv.lock at build time. Notable components:
   - FFmpeg (GyanD essentials build) — LGPL/GPL depending on build configuration;
     verify the exact build license before commercial redistribution
   - PySide6 / Qt — LGPL v3 (dynamic linking); see Qt Company LGPL obligations
+  - Noto Sans SC — SIL Open Font License 1.1 (bundled under gui/fonts/NotoSansSC/)
   - Inno Setup — used only to produce the installer, not redistributed inside the app
 
 Full package versions are recorded in manifests/runtime-lock.json and

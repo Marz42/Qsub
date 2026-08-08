@@ -198,6 +198,14 @@ def main() -> int:
         for f in src_lic.iterdir():
             if f.is_file():
                 shutil.copy2(f, licenses_dir / f.name)
+    ofl = ROOT / "gui" / "fonts" / "NotoSansSC" / "OFL.txt"
+    if ofl.is_file():
+        shutil.copy2(ofl, licenses_dir / "NotoSansSC-OFL.txt")
+
+    # 5c) Bundle GUI fonts next to install root (also shipped via wheel force-include)
+    fonts_src = ROOT / "gui" / "fonts"
+    if fonts_src.is_dir():
+        copy_tree(fonts_src, out / "gui" / "fonts")
 
     write_text(
         out / "README.txt",

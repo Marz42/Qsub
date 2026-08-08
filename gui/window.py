@@ -1,4 +1,4 @@
-"""Main window — thin Chinese GUI over qsub CLI (Spec §33–§35, §51)."""
+"""Main window — Nintendo 2001 chrome over qsub CLI (Chinese UI)."""
 
 from __future__ import annotations
 
@@ -8,8 +8,17 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent
+from PySide6.QtCore import QPointF, Qt, QUrl
+from PySide6.QtGui import (
+    QColor,
+    QDesktopServices,
+    QDragEnterEvent,
+    QDropEvent,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPolygonF,
+)
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -18,6 +27,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -27,6 +37,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -35,6 +46,7 @@ from PySide6.QtWidgets import (
 from gui.cli_process import STAGE_LABELS, CliProcess, humanize_error
 from gui.paths import discover_install_root, find_qsub_command
 from gui.settings import GuiSettings
+from gui import theme
 
 MEDIA_FILTER = (
     "媒体文件 (*.mp4 *.mkv *.mov *.webm *.avi *.wav *.mp3 *.m4a *.aac *.flac *.ogg);;"
@@ -42,30 +54,69 @@ MEDIA_FILTER = (
 )
 
 
-class DropZone(QLabel):
+def _chamfer_path(w: float, h: float, cut: float = 10.0) -> QPainterPath:
+    poly = QPolygonF(
+        [
+            QPointF(cut, 0),
+            QPointF(w - cut, 0),
+            QPointF(w, cut),
+            QPointF(w, h - cut),
+            QPointF(w - cut, h),
+            QPointF(cut, h),
+            QPointF(0, h - cut),
+            QPointF(0, cut),
+        ]
+    )
+    path = QPainterPath()
+    path.addPolygon(poly)
+    path.closeSubpath()
+    return path
+
+
+class DropZone(QWidget):
     def __init__(self, on_paths, parent=None):
         super().__init__(parent)
         self._on_paths = on_paths
         self.setAcceptDrops(True)
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setMinimumHeight(120)
-        self.setText("将视频或音频拖放到此处\n或点击下方「选择文件」")
-        self.setStyleSheet(
-            "QLabel {"
-            " border: 2px dashed #7a8699;"
-            " border-radius: 8px;"
-            " color: #334155;"
-            " background: #f1f5f9;"
-            " font-size: 15px;"
-            " padding: 16px;"
-            "}"
-        )
+        self.setMinimumHeight(118)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(16, 16, 16, 16)
+        lay.setSpacing(8)
+        lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.title = QLabel("放入媒体")
+        self.title.setObjectName("DropTitle")
+        self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.hint = QLabel("将视频 / 音频放入此处 · 或按下「选择文件」")
+        self.hint.setObjectName("DropHint")
+        self.hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.btn_pick = QPushButton("选择文件")
+        self.btn_pick.setObjectName("BtnAmber")
+        self.btn_pick.setFixedWidth(120)
+
+        lay.addWidget(self.title)
+        lay.addWidget(self.hint)
+        lay.addWidget(self.btn_pick, 0, Qt.AlignmentFlag.AlignHCenter)
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        del event
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+        path = _chamfer_path(float(self.width()), float(self.height()), 10.0)
+        p.fillPath(path, QColor(theme.LAVENDER))
+        p.setPen(QPen(QColor(theme.CHROME_INDIGO), 1))
+        p.drawPath(path)
+        # top highlight
+        p.setPen(QPen(QColor(255, 255, 255, 90), 1))
+        p.drawLine(12, 1, self.width() - 12, 1)
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # noqa: N802
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
 
-    def dropEvent(self, event: QDropEvent) -> None:
+    def dropEvent(self, event: QDropEvent) -> None:  # noqa: N802
         paths = []
         for url in event.mimeData().urls():
             local = url.toLocalFile()
@@ -89,15 +140,17 @@ class SettingsDialog(QDialog):
     def __init__(self, settings: GuiSettings, parent=None):
         super().__init__(parent)
         self.setWindowTitle("设置")
-        self.resize(520, 560)
+        self.resize(520, 580)
         self._settings = settings
 
         root = QVBoxLayout(self)
+        root.setContentsMargins(12, 12, 12, 12)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
         body = QWidget()
         layout = QVBoxLayout(body)
+        layout.setSpacing(12)
 
         general = QGroupBox("常规")
         form = QFormLayout(general)
@@ -139,40 +192,24 @@ class SettingsDialog(QDialog):
             "字幕太碎：先加大「停顿切句」和「停顿切句最短时长」。\n"
             "一条太长：先减小「推荐最长」。老在逗号切开：加大「逗号切句比例」。"
         )
+        tip.setObjectName("HintText")
         tip.setWordWrap(True)
-        tip.setStyleSheet("color:#64748b; font-size:12px; margin-bottom:6px;")
         seg_form.addRow(tip)
 
         self.pause_gap = _spin(settings.pause_gap, 0.10, 2.00, 0.05)
         self.pause_gap.setToolTip(
-            "说话停顿达到此秒数就切开字幕。\n"
-            "碎句太多 → 调大（如 0.60）；\n"
-            "该断的地方不断 → 调小（如 0.30）。"
+            "说话停顿达到此秒数就切开字幕。\n碎句太多 → 调大；该断不断 → 调小。"
         )
         self.target_min = _spin(settings.target_min, 0.20, 6.00, 0.10)
-        self.target_min.setToolTip(
-            "靠停顿切句时，当前这条至少要已经持续这么久。\n"
-            "避免刚开口一小会儿就因短停顿被切开。碎句多 → 调大。"
-        )
+        self.target_min.setToolTip("靠停顿切句时，当前条至少已持续多久。碎句多 → 调大。")
         self.target_max = _spin(settings.target_max, 1.00, 20.00, 0.50)
-        self.target_max.setToolTip(
-            "推荐的单条字幕最长时长。\n"
-            "一条字幕太长、读不过来 → 调小（如 4.5）；\n"
-            "切得太碎 → 调大（如 7.0）。"
-        )
+        self.target_max.setToolTip("推荐单条最长。太长 → 调小；太碎 → 调大。")
         self.min_cue = _spin(settings.min_cue_duration, 0.20, 4.00, 0.10)
-        self.min_cue.setToolTip(
-            "单条最短显示时长。比这还短的会尽量并进上一句。\n"
-            "短句乱飞 → 调大（如 1.0）。"
-        )
+        self.min_cue.setToolTip("单条最短时长；过短会并入上一句。")
         self.hard_max = _spin(settings.hard_max_duration, 2.00, 30.00, 0.50)
-        self.hard_max.setToolTip("硬上限：到了这个时长一定会切开，防止一条无限拖长。")
+        self.hard_max.setToolTip("硬上限：到点强制切开。")
         self.clause_ratio = _spin(settings.clause_break_ratio, 0.0, 1.0, 0.05, suffix="")
-        self.clause_ratio.setToolTip(
-            "遇到逗号/分号/顿号时：当前时长 ≥「推荐最长」× 本比例 才切开。\n"
-            "老在逗号处被切开 → 调大（如 0.85）；\n"
-            "希望逗号处多断一点 → 调小（如 0.45）。"
-        )
+        self.clause_ratio.setToolTip("逗号切句比例：越大越不容易在逗号处切开。")
 
         seg_form.addRow("停顿切句", self.pause_gap)
         seg_form.addRow("停顿切句最短时长", self.target_min)
@@ -181,17 +218,16 @@ class SettingsDialog(QDialog):
         seg_form.addRow("硬上限", self.hard_max)
         seg_form.addRow("逗号切句比例", self.clause_ratio)
 
-        help_rows = [
+        for name, desc in [
             ("停顿切句", "停顿多久才切一句"),
             ("停顿切句最短时长", "停顿切句前，当前条至少要播多久"),
             ("推荐最长", "希望单条字幕大概不超过多久"),
             ("最短条长", "太短的条合并到上一句"),
             ("硬上限", "再长也必须切开"),
             ("逗号切句比例", "越大越不容易在逗号处切开"),
-        ]
-        for name, desc in help_rows:
+        ]:
             lbl = QLabel(f"· {name}：{desc}")
-            lbl.setStyleSheet("color:#64748b; font-size:11px;")
+            lbl.setObjectName("HintText")
             seg_form.addRow(lbl)
 
         layout.addWidget(seg)
@@ -231,48 +267,45 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("QwenSubtitle")
-        self.resize(720, 640)
+        self.resize(820, 720)
+        self.setMinimumSize(720, 640)
         self.settings = GuiSettings.load()
         self.input_path: Path | None = None
         self.work_dir: Path | None = None
         self.last_srt: Path | None = None
-        self.last_log_path: Path | None = None
         self.cli = CliProcess(self)
         self.cli.event_received.connect(self.on_event)
         self.cli.finished.connect(self.on_finished)
         self.cli.log_line.connect(self.on_log)
 
         root = QWidget()
+        root.setObjectName("CentralRoot")
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(12)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        brand = QLabel("QwenSubtitle")
-        brand.setStyleSheet("font-size: 28px; font-weight: 700; color: #0f172a;")
-        layout.addWidget(brand)
+        layout.addWidget(self._build_nav())
+        layout.addWidget(self._build_subnav())
 
-        subtitle = QLabel("本地离线字幕生成")
-        subtitle.setStyleSheet("color: #64748b; font-size: 13px;")
-        layout.addWidget(subtitle)
+        body = QWidget()
+        body_lay = QVBoxLayout(body)
+        body_lay.setContentsMargins(12, 12, 12, 12)
+        body_lay.setSpacing(12)
 
         self.drop = DropZone(self._accept_paths)
-        layout.addWidget(self.drop)
+        self.drop.btn_pick.clicked.connect(self.pick_file)
+        body_lay.addWidget(self.drop)
 
-        row = QHBoxLayout()
-        self.btn_pick = QPushButton("选择文件…")
-        self.btn_pick.clicked.connect(self.pick_file)
-        self.btn_settings = QPushButton("设置…")
-        self.btn_settings.clicked.connect(self.open_settings)
-        row.addWidget(self.btn_pick)
-        row.addWidget(self.btn_settings)
-        row.addStretch(1)
-        layout.addLayout(row)
+        mid = QHBoxLayout()
+        mid.setSpacing(12)
 
         form_box = QGroupBox("任务")
         form = QFormLayout(form_box)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.lbl_file = QLabel("（未选择）")
         self.lbl_file.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.lbl_file.setWordWrap(True)
         self.lbl_duration = QLabel("—")
         self.audio_combo = QComboBox()
         self.audio_combo.setEnabled(False)
@@ -293,6 +326,7 @@ class MainWindow(QMainWindow):
         out_row = QHBoxLayout()
         self.out_edit = QLineEdit()
         self.btn_out = QPushButton("浏览…")
+        self.btn_out.setObjectName("BtnAmber")
         self.btn_out.clicked.connect(self.pick_output)
         out_row.addWidget(self.out_edit, 1)
         out_row.addWidget(self.btn_out)
@@ -302,44 +336,68 @@ class MainWindow(QMainWindow):
         form.addRow("音轨", self.audio_combo)
         form.addRow("语言", self.lang_combo)
         form.addRow("输出", out_row)
-        layout.addWidget(form_box)
+        mid.addWidget(form_box, 2)
 
+        status_box = QGroupBox("状态")
+        status_box.setObjectName("StatusBox")
+        status_form = QVBoxLayout(status_box)
+        self.lbl_device = QLabel()
+        self.lbl_encoding = QLabel()
+        self.lbl_segment = QLabel()
+        for w in (self.lbl_device, self.lbl_encoding, self.lbl_segment):
+            w.setObjectName("HintText")
+            w.setWordWrap(True)
+            status_form.addWidget(w)
+        self.btn_settings = QPushButton("设置…")
+        self.btn_settings.setObjectName("BtnCarbon")
+        self.btn_settings.clicked.connect(self.open_settings)
+        status_form.addWidget(self.btn_settings)
+        status_form.addStretch(1)
+        mid.addWidget(status_box, 1)
+        body_lay.addLayout(mid)
+        self._refresh_status_rail()
+
+        progress_box = QGroupBox("进度")
+        progress_box.setObjectName("ProgressPlate")
+        prog = QVBoxLayout(progress_box)
+        self.status = QLabel("准备就绪")
+        self.status.setObjectName("StatusLine")
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 1000)
+        self.progress.setValue(0)
+        self.progress.setTextVisible(False)
         btn_row = QHBoxLayout()
         self.btn_run = QPushButton("生成字幕")
+        self.btn_run.setObjectName("BtnSignal")
         self.btn_run.setEnabled(False)
         self.btn_run.clicked.connect(self.start_job)
-        self.btn_run.setStyleSheet(
-            "QPushButton { background:#0f766e; color:white; padding:10px 18px;"
-            " border:none; border-radius:6px; font-weight:600; }"
-            "QPushButton:disabled { background:#94a3b8; }"
-        )
         self.btn_cancel = QPushButton("取消")
+        self.btn_cancel.setObjectName("BtnCarbon")
         self.btn_cancel.setEnabled(False)
         self.btn_cancel.clicked.connect(self.cancel_job)
         btn_row.addWidget(self.btn_run)
         btn_row.addWidget(self.btn_cancel)
         btn_row.addStretch(1)
-        layout.addLayout(btn_row)
-
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 1000)
-        self.progress.setValue(0)
-        layout.addWidget(self.progress)
-        self.status = QLabel("准备就绪")
-        self.status.setStyleSheet("color:#334155;")
-        layout.addWidget(self.status)
+        prog.addWidget(self.status)
+        prog.addWidget(self.progress)
+        prog.addLayout(btn_row)
+        body_lay.addWidget(progress_box)
 
         self.result_box = QGroupBox("结果")
         result_layout = QVBoxLayout(self.result_box)
-        self.result_label = QLabel("")
+        self.result_label = QLabel("未生成 — 完成后显示预览")
+        self.result_label.setObjectName("StatusLine")
         self.preview = QTextEdit()
         self.preview.setReadOnly(True)
-        self.preview.setMaximumHeight(140)
-        self.preview.setPlaceholderText("完成后将显示字幕预览（只读）")
+        self.preview.setMaximumHeight(120)
+        self.preview.setPlaceholderText("字幕预览（只读）")
         open_row = QHBoxLayout()
         self.btn_open_srt = QPushButton("打开字幕")
         self.btn_open_folder = QPushButton("打开文件夹")
         self.btn_open_log = QPushButton("查看日志")
+        self.btn_open_srt.setObjectName("BtnAmber")
+        self.btn_open_folder.setObjectName("BtnAmber")
+        self.btn_open_log.setObjectName("BtnCarbon")
         self.btn_open_srt.clicked.connect(self.open_srt)
         self.btn_open_folder.clicked.connect(self.open_folder)
         self.btn_open_log.clicked.connect(self.open_log)
@@ -350,14 +408,75 @@ class MainWindow(QMainWindow):
         result_layout.addWidget(self.result_label)
         result_layout.addWidget(self.preview)
         result_layout.addLayout(open_row)
-        self.result_box.setVisible(False)
-        layout.addWidget(self.result_box)
-        layout.addStretch(1)
+        body_lay.addWidget(self.result_box)
+        body_lay.addStretch(1)
+
+        layout.addWidget(body, 1)
+        layout.addWidget(self._build_footer())
+
+    def _build_nav(self) -> QWidget:
+        bar = QWidget()
+        bar.setObjectName("NavBar")
+        lay = QHBoxLayout(bar)
+        lay.setContentsMargins(10, 0, 10, 0)
+        pill = QLabel("Q")
+        pill.setObjectName("BrandPill")
+        name = QLabel("QwenSubtitle")
+        name.setObjectName("BrandName")
+        self.nav_meta = QLabel("本地离线字幕机 · READY")
+        self.nav_meta.setObjectName("NavMeta")
+        lay.addWidget(pill)
+        lay.addWidget(name)
+        lay.addStretch(1)
+        lay.addWidget(self.nav_meta)
+        return bar
+
+    def _build_subnav(self) -> QWidget:
+        bar = QWidget()
+        bar.setObjectName("SubNav")
+        lay = QHBoxLayout(bar)
+        lay.setContentsMargins(8, 0, 8, 0)
+        lay.setSpacing(4)
+        for text, slot in (
+            ("任务", lambda: None),
+            ("设置", self.open_settings),
+            ("日志目录", self.open_log),
+        ):
+            btn = QPushButton(text)
+            btn.setObjectName("SubNavLink")
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            if slot is not None:
+                btn.clicked.connect(slot)
+            lay.addWidget(btn)
+        lay.addStretch(1)
+        return bar
+
+    def _build_footer(self) -> QWidget:
+        bar = QWidget()
+        bar.setObjectName("FooterBar")
+        lay = QHBoxLayout(bar)
+        lay.setContentsMargins(12, 0, 12, 0)
+        self.footer_left = QLabel("work · —")
+        self.footer_left.setObjectName("FooterText")
+        self.footer_right = QLabel("QwenSubtitle 0.1.0 · CLI subprocess")
+        self.footer_right.setObjectName("FooterText")
+        lay.addWidget(self.footer_left)
+        lay.addStretch(1)
+        lay.addWidget(self.footer_right)
+        return bar
+
+    def _refresh_status_rail(self) -> None:
+        device_map = {"auto": "自动", "cuda": "CUDA", "cpu": "CPU"}
+        enc_map = {"utf-8-bom": "UTF-8 BOM", "utf-8": "UTF-8"}
+        self.lbl_device.setText(f"设备\n{device_map.get(self.settings.device, self.settings.device)}")
+        self.lbl_encoding.setText(f"输出编码\n{enc_map.get(self.settings.encoding, self.settings.encoding)}")
+        self.lbl_segment.setText(
+            f"分句\n停顿 {self.settings.pause_gap:g}s · 推荐最长 {self.settings.target_max:g}s"
+        )
 
     def _accept_paths(self, paths: list[Path]) -> None:
-        if not paths:
-            return
-        self.set_input(paths[0])
+        if paths:
+            self.set_input(paths[0])
 
     def pick_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "选择媒体文件", "", MEDIA_FILTER)
@@ -377,6 +496,7 @@ class MainWindow(QMainWindow):
             idx = self.lang_combo.findData(self.settings.language)
             if idx >= 0:
                 self.lang_combo.setCurrentIndex(idx)
+            self._refresh_status_rail()
 
     def set_input(self, path: Path) -> None:
         path = path.expanduser().resolve()
@@ -387,8 +507,10 @@ class MainWindow(QMainWindow):
         self.lbl_file.setText(str(path))
         self.out_edit.setText(str(path.with_suffix(".srt")))
         self.btn_run.setEnabled(True)
-        self.result_box.setVisible(False)
+        self.result_label.setText("未生成 — 完成后显示预览")
+        self.preview.clear()
         self.last_srt = None
+        self.nav_meta.setText("本地离线字幕机 · 已选文件")
         self._probe_async(path)
 
     def _probe_async(self, path: Path) -> None:
@@ -441,6 +563,7 @@ class MainWindow(QMainWindow):
         out_path = Path(out)
 
         self.work_dir = Path(tempfile.mkdtemp(prefix="qsub-gui-"))
+        self.footer_left.setText(f"work · {self.work_dir}")
         cmd = find_qsub_command() + [
             "transcribe",
             str(self.input_path),
@@ -466,11 +589,12 @@ class MainWindow(QMainWindow):
 
         self.progress.setValue(0)
         self.status.setText("正在启动…")
-        self.result_box.setVisible(False)
+        self.nav_meta.setText("本地离线字幕机 · 处理中")
+        self.result_label.setText("未生成 — 完成后显示预览")
         self.preview.clear()
         self.btn_run.setEnabled(False)
         self.btn_cancel.setEnabled(True)
-        self.btn_pick.setEnabled(False)
+        self.drop.btn_pick.setEnabled(False)
 
         env = {}
         root = discover_install_root()
@@ -481,7 +605,8 @@ class MainWindow(QMainWindow):
         except Exception as exc:  # noqa: BLE001
             self.btn_run.setEnabled(True)
             self.btn_cancel.setEnabled(False)
-            self.btn_pick.setEnabled(True)
+            self.drop.btn_pick.setEnabled(True)
+            self.nav_meta.setText("本地离线字幕机 · 错误")
             QMessageBox.critical(self, "无法启动", str(exc))
 
     def cancel_job(self) -> None:
@@ -507,11 +632,11 @@ class MainWindow(QMainWindow):
         elif et == "artifact" and event.get("kind") == "srt":
             self.last_srt = Path(str(event.get("path")))
         elif et == "warning":
-            code = event.get("code")
-            self.status.setText(f"警告：{code}")
+            self.status.setText(f"警告：{event.get('code')}")
         elif et == "error":
             title, body = humanize_error(str(event.get("code") or "ERROR"), str(event.get("message") or ""))
             self.status.setText(title)
+            self.nav_meta.setText("本地离线字幕机 · 错误")
             QMessageBox.critical(self, title, body)
         elif et == "completed":
             overall = event.get("overall")
@@ -522,26 +647,24 @@ class MainWindow(QMainWindow):
                 self.last_srt = Path(str(srt))
 
     def on_log(self, line: str) -> None:
-        # Keep UI quiet; optional debug could append.
         _ = line
 
     def on_finished(self, code: int) -> None:
         self.btn_cancel.setEnabled(False)
-        self.btn_pick.setEnabled(True)
+        self.drop.btn_pick.setEnabled(True)
         self.btn_run.setEnabled(self.input_path is not None)
         if code == 0 and self.last_srt and self.last_srt.is_file():
             self.progress.setValue(1000)
             self.status.setText("字幕已生成")
-            self.result_label.setText(f"✓ 字幕已生成\n{self.last_srt}")
-            self.result_box.setVisible(True)
+            self.nav_meta.setText("本地离线字幕机 · READY")
+            self.result_label.setText(f"字幕已生成 · {self.last_srt.name}")
             self._load_preview(self.last_srt)
         elif code == 130:
             self.status.setText("已取消")
+            self.nav_meta.setText("本地离线字幕机 · 已取消")
         elif code != 0:
             self.status.setText(f"失败（退出码 {code}）")
-            if not self.result_box.isVisible():
-                # Generic fallback if no NDJSON error arrived
-                pass
+            self.nav_meta.setText("本地离线字幕机 · 失败")
 
     def _load_preview(self, path: Path) -> None:
         try:
@@ -549,9 +672,7 @@ class MainWindow(QMainWindow):
         except OSError:
             self.preview.setPlainText("")
             return
-        # Show first ~20 cue blocks worth of lines
-        lines = text.splitlines()
-        self.preview.setPlainText("\n".join(lines[:80]))
+        self.preview.setPlainText("\n".join(text.splitlines()[:80]))
 
     def open_srt(self) -> None:
         if self.last_srt and self.last_srt.is_file():

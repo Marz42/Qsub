@@ -30,6 +30,10 @@ spikes/**/out/
 # Acceptance run artifacts
 acceptance/last-run.json
 
+# Font source archives (static TTFs live under gui/fonts/)
+Noto_Sans_SC.zip
+Noto*.zip
+
 # User / OS
 .DS_Store
 Thumbs.db
