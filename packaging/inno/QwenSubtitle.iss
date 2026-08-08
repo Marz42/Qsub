@@ -3,7 +3,8 @@
 ;
 ; Requires a prepared portable tree at SourceDir (default:
 ;   dist\portable\QwenSubtitle)
-; Full offline release must include models\ (build_runtime.py --with-models).
+; Default release omits ASR/Aligner; users run download-models.cmd once.
+; Optional air-gap OEM: build_runtime.py --with-models.
 
 #ifndef MyAppVersion
   #define MyAppVersion "0.1.0"
@@ -38,8 +39,12 @@ OutputDir={#OutputDir}
 OutputBaseFilename=QwenSubtitle-Setup
 SetupIconFile=
 UninstallDisplayIcon={app}\runtime\Scripts\pythonw.exe
-Compression=lzma2/ultra64
-SolidCompression=yes
+; NOTE: Do NOT use lzma2/ultra64 + SolidCompression on this tree.
+; Portable runtime is ~5GB+ (torch DLLs already compressed); ultra64/solid
+; can sit on "Compressing…" for hours and look hung (esp. slower disks/CPUs).
+; lzma2/max + non-solid: far faster compile, similar final size for binaries.
+Compression=lzma2/max
+SolidCompression=no
 WizardStyle=modern
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
@@ -47,6 +52,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ; Spec §39: full offline tree exceeds 4 GB — use disk spanning
 DiskSpanning=yes
 DiskSliceSize=2100000000
+; Show per-file progress in ISCC console (helps detect real stalls)
+InternalCompressLevel=max
 AllowNoIcons=yes
 ChangesEnvironment=no
 CloseApplications=yes

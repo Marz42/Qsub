@@ -18,6 +18,8 @@ dependencies = [
 
 [project.optional-dependencies]
 gui = ["PySide6>=6.6"]
+# Explicit model fetch (download-models.cmd / scripts/download_models.py) — not used by transcribe.
+fetch = ["huggingface_hub>=0.26"]
 dev = ["pytest>=8.0", "huggingface_hub>=0.26"]
 
 [project.scripts]

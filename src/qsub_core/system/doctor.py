@@ -102,23 +102,36 @@ def format_doctor_text(report: dict[str, Any]) -> str:
     gpu = report.get("gpu") or {}
     vram = gpu.get("vram_gb")
     vram_s = f"{vram} GB" if vram is not None else "n/a"
+    checks = report["checks"]
     lines = [
         report["app"],
         "",
-        f"Windows:      {'OK' if report['checks']['windows'] else 'FAIL'}",
+        f"Windows:      {'OK' if checks['windows'] else 'FAIL'}",
         f"Arch:         {report['platform']['machine']}",
         f"GPU:          {gpu.get('name') or 'n/a'}",
         f"VRAM:         {vram_s}",
-        f"PyTorch CUDA: {'OK' if report['checks']['torch_cuda'] else 'NO'}",
-        f"FFmpeg:       {'OK' if report['checks']['ffmpeg'] else 'MISSING'}",
-        f"FFprobe:      {'OK' if report['checks']['ffprobe'] else 'MISSING'}",
-        f"ASR Model:    {'OK' if report['checks']['asr_model'] else 'MISSING'}",
-        f"Aligner:      {'OK' if report['checks']['aligner_model'] else 'MISSING'}",
-        f"VAD:          {'OK' if report['checks'].get('vad_model') else 'MISSING'}",
-        f"User data:    {'OK' if report['checks']['user_data_writable'] else 'FAIL'}",
+        f"PyTorch CUDA: {'OK' if checks['torch_cuda'] else 'NO'}",
+        f"FFmpeg:       {'OK' if checks['ffmpeg'] else 'MISSING'}",
+        f"FFprobe:      {'OK' if checks['ffprobe'] else 'MISSING'}",
+        f"ASR Model:    {'OK' if checks['asr_model'] else 'MISSING'}",
+        f"Aligner:      {'OK' if checks['aligner_model'] else 'MISSING'}",
+        f"VAD:          {'OK' if checks.get('vad_model') else 'MISSING'}",
+        f"User data:    {'OK' if checks['user_data_writable'] else 'FAIL'}",
         "",
         f"Status: {report['status']}",
     ]
+    if not (checks["asr_model"] and checks["aligner_model"]):
+        lines.extend(
+            [
+                "",
+                "Models are not bundled with the installer by default.",
+                "On the install/portable root, run once (needs network):",
+                "  download-models.cmd",
+                "Or (dev tree):",
+                "  uv run python scripts/download_models.py --confirm-download",
+                "Then re-run: qsub doctor",
+            ]
+        )
     return "\n".join(lines)
 
 

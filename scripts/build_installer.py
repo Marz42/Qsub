@@ -74,7 +74,11 @@ def main() -> int:
     p.add_argument("--iss", type=Path, default=DEFAULT_ISS)
     p.add_argument("--out", type=Path, default=DEFAULT_OUT)
     p.add_argument("--version", default="0.1.0")
-    p.add_argument("--require-models", action="store_true", help="Fail if models/ not bundled")
+    p.add_argument(
+        "--require-models",
+        action="store_true",
+        help="Fail if ASR/Aligner missing (default releases omit them; users download later)",
+    )
     p.add_argument("--iscc", type=Path, default=None, help="Path to ISCC.exe")
     args = p.parse_args()
 
@@ -103,6 +107,17 @@ def main() -> int:
         return 3
 
     out.mkdir(parents=True, exist_ok=True)
+    # Rough size hint — ultra compression on multi-GB trees looks "stuck".
+    try:
+        total = sum(f.stat().st_size for f in source.rglob("*") if f.is_file())
+        print(f"Source tree: {source} (~{total / (1024**3):.2f} GiB)")
+    except OSError:
+        print(f"Source tree: {source}")
+    print(
+        "Note: first-time lzma compress of PyTorch runtime can take 10–40+ min. "
+        "Watch ISCC 'Compressing:' lines; .bin size grows when SolidCompression=no."
+    )
+
     # Paths relative to ISS location for defines that Inno resolves from script dir
     # Pass absolute paths to avoid cwd confusion.
     cmd = [
@@ -112,8 +127,9 @@ def main() -> int:
         f"/DOutputDir={out}",
         str(iss),
     ]
-    print("+", " ".join(cmd))
+    print("+", " ".join(cmd), flush=True)
     try:
+        # Inherit stdio so Compressing: lines stream live (not fully buffered).
         subprocess.check_call(cmd)
     except subprocess.CalledProcessError as exc:
         print(f"ISCC failed: {exc.returncode}", file=sys.stderr)

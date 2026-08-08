@@ -4,17 +4,19 @@ Assemble a portable Windows layout (Phase 6 — Runtime Packaging).
 
 Output:
   dist/portable/QwenSubtitle/
-    qsub.cmd
+    qsub.cmd / download-models.cmd
     qsub.ps1
     launcher/
-    runtime/          # relocatable uv venv with locked deps
+    runtime/          # relocatable uv venv (gui + fetch extras)
     bin/              # ffmpeg/ffprobe (optional --with-ffmpeg)
-    models/           # optional --with-models
+    models/           # VAD export by default; ASR/Aligner via download-models.cmd
+    scripts/download_models.py
     manifests/
     README.txt
 
-Target: on a clean machine (no system Python / CUDA Toolkit / FFmpeg on PATH),
-`qsub.cmd doctor` and `qsub.cmd transcribe …` still work using bundled runtime.
+Default releases omit ASR/Aligner weights. After download-models.cmd once,
+a clean machine (no system Python / CUDA Toolkit / FFmpeg on PATH) can run
+offline with the bundled runtime.
 """
 
 from __future__ import annotations
@@ -52,7 +54,11 @@ def main() -> int:
     p.add_argument("--out", type=Path, default=DEFAULT_OUT)
     p.add_argument("--python", default="3.12", help="Python version for uv venv")
     p.add_argument("--with-ffmpeg", action="store_true", help="Download pinned FFmpeg into bin/")
-    p.add_argument("--with-models", action="store_true", help="Copy models/ into the portable tree")
+    p.add_argument(
+        "--with-models",
+        action="store_true",
+        help="Optional: copy ASR/Aligner from repo models/ (air-gap OEM; not default release)",
+    )
     p.add_argument("--clean", action="store_true", help="Remove existing --out first")
     args = p.parse_args()
 
@@ -83,10 +89,13 @@ def main() -> int:
         print(f"missing {python_exe}")
         return 1
 
-    # 2) Install locked project + deps + GUI into the venv
+    # 2) Install locked project + deps + GUI + fetch (huggingface_hub) into the venv
     env = os.environ.copy()
     env["UV_PROJECT_ENVIRONMENT"] = str(runtime)
-    run(["uv", "sync", "--frozen", "--no-dev", "--extra", "gui"], env=env)
+    run(
+        ["uv", "sync", "--frozen", "--no-dev", "--extra", "gui", "--extra", "fetch"],
+        env=env,
+    )
 
     # Ensure console script / GUI import path exist
     run(
@@ -178,10 +187,41 @@ def main() -> int:
     if args.with_ffmpeg:
         run([sys.executable, str(ROOT / "scripts" / "fetch_ffmpeg.py"), "--dest-bin", str(bin_dir)])
 
-    # 5) Models
+    # 5) Models — default: no ASR/Aligner weights (user runs download-models.cmd).
+    # Always export tiny VAD jit from the portable env's silero-vad package.
     models.mkdir(parents=True, exist_ok=True)
     shutil.copy2(ROOT / "models" / "README.md", models / "README.md")
+    scripts_out = out / "scripts"
+    scripts_out.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ROOT / "scripts" / "download_models.py", scripts_out / "download_models.py")
+    write_text(
+        out / "download-models.cmd",
+        "@echo off\r\n"
+        "setlocal\r\n"
+        "set \"QSUB_ROOT=%~dp0\"\r\n"
+        "echo Downloading ASR/Aligner (and exporting VAD) into %%QSUB_ROOT%%models\r\n"
+        "echo Requires network for Hugging Face weights. Ctrl+C to cancel.\r\n"
+        "\"%~dp0runtime\\Scripts\\python.exe\" \"%~dp0scripts\\download_models.py\" --confirm-download %*\r\n"
+        "exit /b %ERRORLEVEL%\r\n",
+    )
+    print("Exporting silero-vad into models/silero-vad …")
+    vad_export = subprocess.run(
+        [
+            str(python_exe),
+            str(scripts_out / "download_models.py"),
+            "--only",
+            "vad",
+            "--confirm-download",
+            "--models-dir",
+            str(models),
+        ],
+        cwd=str(out),
+    )
+    if vad_export.returncode != 0:
+        print("warning: VAD export failed; user can re-run download-models.cmd --only vad")
+
     if args.with_models:
+        print("NOTE: --with-models is optional (air-gap OEM). Default releases omit ASR/Aligner.")
         for name in ("Qwen3-ASR-0.6B", "Qwen3-ForcedAligner-0.6B", "silero-vad"):
             src = ROOT / "models" / name
             if src.is_dir() and any(src.iterdir()):
@@ -219,6 +259,12 @@ def main() -> int:
         "  qsub.cmd doctor\r\n"
         "  qsub.cmd probe video.mp4\r\n"
         "  qsub.cmd transcribe video.mp4 --language Chinese --overwrite\r\n"
+        "\r\n"
+        "Models (NOT bundled by default):\r\n"
+        "  1. Connect to the internet once\r\n"
+        "  2. Run download-models.cmd  (writes ASR/Aligner under models\\)\r\n"
+        "  3. qsub.cmd doctor  -> READY\r\n"
+        "  Afterwards the app works offline. Transcription never auto-downloads.\r\n"
         "\r\n"
         "Requirements:\r\n"
         "  - NVIDIA driver (CUDA Toolkit NOT required)\r\n"

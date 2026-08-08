@@ -1159,6 +1159,9 @@ dev = [
     { name = "huggingface-hub" },
     { name = "pytest" },
 ]
+fetch = [
+    { name = "huggingface-hub" },
+]
 gui = [
     { name = "pyside6" },
 ]
@@ -1166,6 +1169,7 @@ gui = [
 [package.metadata]
 requires-dist = [
     { name = "huggingface-hub", marker = "extra == 'dev'", specifier = ">=0.26" },
+    { name = "huggingface-hub", marker = "extra == 'fetch'", specifier = ">=0.26" },
     { name = "librosa", specifier = ">=0.10.2" },
     { name = "numba", specifier = ">=0.60.0" },
     { name = "numpy", specifier = ">=1.26" },
@@ -1176,7 +1180,7 @@ requires-dist = [
     { name = "soundfile", specifier = ">=0.12" },
     { name = "torch", index = "https://download.pytorch.org/whl/cu124" },
 ]
-provides-extras = ["gui", "dev"]
+provides-extras = ["gui", "fetch", "dev"]
 
 [[package]]
 name = "regex"

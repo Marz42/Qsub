@@ -17,17 +17,31 @@ def run(cmd: list[str]) -> None:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="QwenSubtitle release helper")
+    p = argparse.ArgumentParser(
+        description="QwenSubtitle release helper (default: runtime without ASR/Aligner weights)"
+    )
     p.add_argument("--with-ffmpeg", action="store_true", default=True)
     p.add_argument("--no-ffmpeg", action="store_true")
-    p.add_argument("--with-models", action="store_true")
+    p.add_argument(
+        "--with-models",
+        action="store_true",
+        help="Bundle ASR/Aligner from repo models/ (optional air-gap; not default)",
+    )
     p.add_argument("--installer", action="store_true", help="Also compile Inno Setup package")
-    p.add_argument("--require-models", action="store_true", help="Installer must include models/")
+    p.add_argument(
+        "--require-models",
+        action="store_true",
+        help="Fail installer build if ASR/Aligner missing (only with --with-models)",
+    )
     p.add_argument("--out", type=Path, default=None)
     p.add_argument("--version", default="0.1.0")
     args = p.parse_args()
 
-    run([sys.executable, str(ROOT / "scripts" / "verify_models.py")])
+    if args.with_models:
+        run([sys.executable, str(ROOT / "scripts" / "verify_models.py")])
+    elif args.require_models:
+        print("error: --require-models needs --with-models", file=sys.stderr)
+        return 2
 
     cmd = [sys.executable, str(ROOT / "scripts" / "build_runtime.py"), "--clean"]
     if args.out:
@@ -47,11 +61,13 @@ def main() -> int:
         ]
         if args.out:
             inst += ["--source", str(args.out)]
-        if args.require_models or args.with_models:
+        if args.require_models:
             inst.append("--require-models")
         run(inst)
 
     print("Release build finished.")
+    if not args.with_models:
+        print("Models: not bundled. End users run download-models.cmd once (network).")
     return 0
 
 
