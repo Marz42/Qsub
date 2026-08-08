@@ -69,6 +69,13 @@ class TranscribeOptions:
     events: str = "text"
     log_level: str = "info"
     encoding: str = "utf-8-bom"
+    # Subtitle segmentation (Spec §19) — see qsub_core.subtitles.segment defaults
+    pause_gap: float = 0.45
+    target_min: float = 1.5
+    target_max: float = 6.0
+    min_cue_duration: float = 0.8
+    hard_max_duration: float = 8.0
+    clause_break_ratio: float = 0.6
 
 
 class PipelineEngine:
@@ -98,6 +105,12 @@ class PipelineEngine:
                 "resume": self.opts.resume,
                 "output": str(self.opts.output) if self.opts.output else None,
                 "encoding": self.opts.encoding,
+                "pause_gap": self.opts.pause_gap,
+                "target_min": self.opts.target_min,
+                "target_max": self.opts.target_max,
+                "min_cue_duration": self.opts.min_cue_duration,
+                "hard_max_duration": self.opts.hard_max_duration,
+                "clause_break_ratio": self.opts.clause_break_ratio,
             },
         )
         if self.opts.resume and self.ws.job_json.is_file():
@@ -768,7 +781,15 @@ class PipelineEngine:
             return self._fail(job, errors.PROJECT_FAILURE, "missing tokens.json"), None
 
         tokens = list(tok_payload.get("tokens") or [])
-        subtitles = segment_tokens(tokens)
+        subtitles = segment_tokens(
+            tokens,
+            min_duration=float(self.opts.min_cue_duration),
+            target_min=float(self.opts.target_min),
+            target_max=float(self.opts.target_max),
+            hard_max=float(self.opts.hard_max_duration),
+            pause_gap=float(self.opts.pause_gap),
+            clause_break_ratio=float(self.opts.clause_break_ratio),
+        )
         inv = validate_srt_invariants(subtitles)
         if inv:
             return (

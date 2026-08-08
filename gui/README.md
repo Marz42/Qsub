@@ -21,4 +21,5 @@ uv run python -m gui.main
 - 「生成字幕」→ `qsub transcribe … --events ndjson`
 - 进度条与阶段文案来自 NDJSON
 - 「取消」写入工作目录 `cancel.flag`
-- 设置：设备 / 语言 / 输出编码 / 保留缓存 → `%LOCALAPPDATA%\QwenSubtitle\gui-config.json`
+- 设置：设备 / 语言 / 输出编码 / 保留缓存 / 分句参数 → `%LOCALAPPDATA%\QwenSubtitle\gui-config.json`
+- 分句参数对应 CLI：`--pause-gap`、`--target-min`、`--target-max`、`--min-cue-duration`、`--hard-max-duration`、`--clause-break-ratio`

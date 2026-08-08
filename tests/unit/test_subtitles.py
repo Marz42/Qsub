@@ -34,6 +34,19 @@ def test_segment_on_sentence_end():
     assert all(c["end"] > c["start"] for c in cues)
 
 
+def test_segment_pause_gap_and_clause_ratio():
+    # Long clause with mid commas; high clause_break_ratio should avoid early comma cuts.
+    tokens = []
+    t = 0.0
+    for ch in "我们今天讨论这个问题，还有另一个方案，最后再做决定。":
+        tokens.append({"text": ch, "start": t, "end": t + 0.15})
+        t += 0.18
+    many = segment_tokens(tokens, clause_break_ratio=0.2, target_max=3.0, pause_gap=2.0)
+    few = segment_tokens(tokens, clause_break_ratio=0.95, target_max=3.0, pause_gap=2.0)
+    assert len(many) >= len(few)
+    assert validate_srt_invariants(few) == []
+
+
 def test_srt_renderer_and_bom(tmp_path: Path):
     subs = [
         {"id": 1, "start": 12.31, "end": 15.82, "text": "今天我们讨论一下这个问题。"},

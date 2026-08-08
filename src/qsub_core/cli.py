@@ -54,6 +54,50 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["debug", "info", "warning", "error"],
         default="info",
     )
+    seg = p_tr.add_argument_group("分句参数（识别不变，只影响字幕切条）")
+    seg.add_argument(
+        "--pause-gap",
+        type=float,
+        default=0.45,
+        metavar="SEC",
+        help="停顿多久才切句（秒）。碎句多→调大；该断不断→调小。默认 0.45",
+    )
+    seg.add_argument(
+        "--target-min",
+        type=float,
+        default=1.5,
+        metavar="SEC",
+        help="靠停顿切句时，当前条至少已持续多久（秒）。碎句多→调大。默认 1.5",
+    )
+    seg.add_argument(
+        "--target-max",
+        type=float,
+        default=6.0,
+        metavar="SEC",
+        help="推荐单条最长（秒）。一条太长→调小；切太碎→调大。默认 6.0",
+    )
+    seg.add_argument(
+        "--min-cue-duration",
+        type=float,
+        default=0.8,
+        metavar="SEC",
+        help="单条最短时长（秒），过短会并入上一句。默认 0.8",
+    )
+    seg.add_argument(
+        "--hard-max-duration",
+        type=float,
+        default=8.0,
+        metavar="SEC",
+        help="单条硬上限（秒），到点强制切开。默认 8.0",
+    )
+    seg.add_argument(
+        "--clause-break-ratio",
+        type=float,
+        default=0.6,
+        metavar="RATIO",
+        help="逗号/分号切句阈值：当前时长≥ target-max×该值 才在逗号处切。"
+        "老在逗号切开→调大（如 0.85）。范围 0–1，默认 0.6",
+    )
 
     p_ex = sub.add_parser("export", help="从 project.json 导出字幕")
     p_ex.add_argument("project", type=Path)
@@ -114,6 +158,12 @@ def cmd_transcribe(args: argparse.Namespace) -> int:
         events=args.events,
         log_level=args.log_level,
         encoding=args.encoding,
+        pause_gap=float(args.pause_gap),
+        target_min=float(args.target_min),
+        target_max=float(args.target_max),
+        min_cue_duration=float(args.min_cue_duration),
+        hard_max_duration=float(args.hard_max_duration),
+        clause_break_ratio=float(args.clause_break_ratio),
     )
     return PipelineEngine(opts, events).run()
 

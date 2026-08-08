@@ -11,7 +11,11 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -22,12 +26,10 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QTextEdit,
     QVBoxLayout,
     QWidget,
-    QCheckBox,
-    QDialog,
-    QDialogButtonBox,
 )
 
 from gui.cli_process import STAGE_LABELS, CliProcess, humanize_error
@@ -73,13 +75,32 @@ class DropZone(QLabel):
             self._on_paths(paths)
 
 
+def _spin(value: float, minimum: float, maximum: float, step: float, suffix: str = " 秒") -> QDoubleSpinBox:
+    w = QDoubleSpinBox()
+    w.setRange(minimum, maximum)
+    w.setSingleStep(step)
+    w.setDecimals(2)
+    w.setValue(value)
+    w.setSuffix(suffix)
+    return w
+
+
 class SettingsDialog(QDialog):
     def __init__(self, settings: GuiSettings, parent=None):
         super().__init__(parent)
         self.setWindowTitle("设置")
+        self.resize(520, 560)
         self._settings = settings
-        layout = QFormLayout(self)
 
+        root = QVBoxLayout(self)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        body = QWidget()
+        layout = QVBoxLayout(body)
+
+        general = QGroupBox("常规")
+        form = QFormLayout(general)
         self.device = QComboBox()
         self.device.addItem("自动", "auto")
         self.device.addItem("CUDA（NVIDIA）", "cuda")
@@ -106,17 +127,84 @@ class SettingsDialog(QDialog):
         self.keep_work = QCheckBox("保留处理缓存（便于断点续跑）")
         self.keep_work.setChecked(settings.keep_work)
 
-        layout.addRow("设备", self.device)
-        layout.addRow("语言", self.language)
-        layout.addRow("输出编码", self.encoding)
-        layout.addRow("", self.keep_work)
+        form.addRow("设备", self.device)
+        form.addRow("语言", self.language)
+        form.addRow("输出编码", self.encoding)
+        form.addRow("", self.keep_work)
+        layout.addWidget(general)
+
+        seg = QGroupBox("分句（只影响字幕切条，不改识别文字）")
+        seg_form = QFormLayout(seg)
+        tip = QLabel(
+            "字幕太碎：先加大「停顿切句」和「停顿切句最短时长」。\n"
+            "一条太长：先减小「推荐最长」。老在逗号切开：加大「逗号切句比例」。"
+        )
+        tip.setWordWrap(True)
+        tip.setStyleSheet("color:#64748b; font-size:12px; margin-bottom:6px;")
+        seg_form.addRow(tip)
+
+        self.pause_gap = _spin(settings.pause_gap, 0.10, 2.00, 0.05)
+        self.pause_gap.setToolTip(
+            "说话停顿达到此秒数就切开字幕。\n"
+            "碎句太多 → 调大（如 0.60）；\n"
+            "该断的地方不断 → 调小（如 0.30）。"
+        )
+        self.target_min = _spin(settings.target_min, 0.20, 6.00, 0.10)
+        self.target_min.setToolTip(
+            "靠停顿切句时，当前这条至少要已经持续这么久。\n"
+            "避免刚开口一小会儿就因短停顿被切开。碎句多 → 调大。"
+        )
+        self.target_max = _spin(settings.target_max, 1.00, 20.00, 0.50)
+        self.target_max.setToolTip(
+            "推荐的单条字幕最长时长。\n"
+            "一条字幕太长、读不过来 → 调小（如 4.5）；\n"
+            "切得太碎 → 调大（如 7.0）。"
+        )
+        self.min_cue = _spin(settings.min_cue_duration, 0.20, 4.00, 0.10)
+        self.min_cue.setToolTip(
+            "单条最短显示时长。比这还短的会尽量并进上一句。\n"
+            "短句乱飞 → 调大（如 1.0）。"
+        )
+        self.hard_max = _spin(settings.hard_max_duration, 2.00, 30.00, 0.50)
+        self.hard_max.setToolTip("硬上限：到了这个时长一定会切开，防止一条无限拖长。")
+        self.clause_ratio = _spin(settings.clause_break_ratio, 0.0, 1.0, 0.05, suffix="")
+        self.clause_ratio.setToolTip(
+            "遇到逗号/分号/顿号时：当前时长 ≥「推荐最长」× 本比例 才切开。\n"
+            "老在逗号处被切开 → 调大（如 0.85）；\n"
+            "希望逗号处多断一点 → 调小（如 0.45）。"
+        )
+
+        seg_form.addRow("停顿切句", self.pause_gap)
+        seg_form.addRow("停顿切句最短时长", self.target_min)
+        seg_form.addRow("推荐最长", self.target_max)
+        seg_form.addRow("最短条长", self.min_cue)
+        seg_form.addRow("硬上限", self.hard_max)
+        seg_form.addRow("逗号切句比例", self.clause_ratio)
+
+        help_rows = [
+            ("停顿切句", "停顿多久才切一句"),
+            ("停顿切句最短时长", "停顿切句前，当前条至少要播多久"),
+            ("推荐最长", "希望单条字幕大概不超过多久"),
+            ("最短条长", "太短的条合并到上一句"),
+            ("硬上限", "再长也必须切开"),
+            ("逗号切句比例", "越大越不容易在逗号处切开"),
+        ]
+        for name, desc in help_rows:
+            lbl = QLabel(f"· {name}：{desc}")
+            lbl.setStyleSheet("color:#64748b; font-size:11px;")
+            seg_form.addRow(lbl)
+
+        layout.addWidget(seg)
+        layout.addStretch(1)
+        scroll.setWidget(body)
+        root.addWidget(scroll)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
-        layout.addRow(buttons)
+        root.addWidget(buttons)
 
     @staticmethod
     def _set_combo(combo: QComboBox, value: str) -> None:
@@ -130,6 +218,12 @@ class SettingsDialog(QDialog):
             language=str(self.language.currentData()),
             encoding=str(self.encoding.currentData()),
             keep_work=self.keep_work.isChecked(),
+            pause_gap=float(self.pause_gap.value()),
+            target_min=float(self.target_min.value()),
+            target_max=float(self.target_max.value()),
+            min_cue_duration=float(self.min_cue.value()),
+            hard_max_duration=float(self.hard_max.value()),
+            clause_break_ratio=float(self.clause_ratio.value()),
         )
 
 
@@ -365,6 +459,7 @@ class MainWindow(QMainWindow):
             "--work-dir",
             str(self.work_dir),
             "--overwrite",
+            *self.settings.segment_cli_args(),
         ]
         if self.settings.keep_work:
             cmd.append("--keep-work")

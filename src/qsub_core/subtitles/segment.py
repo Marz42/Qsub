@@ -13,6 +13,7 @@ HARD_MAX_DURATION = 8.0
 MAX_LINES = 2
 MAX_LINE_WIDTH = 36  # ~18 CJK chars per line
 MAX_CUE_WIDTH = MAX_LINE_WIDTH * MAX_LINES
+CLAUSE_BREAK_RATIO = 0.6
 
 SENTENCE_END = set("。？！!?…")
 CLAUSE_BREAK = set("，,；;、")
@@ -23,17 +24,21 @@ def segment_tokens(
     tokens: list[dict[str, Any]],
     *,
     min_duration: float = MIN_DURATION,
+    target_min: float = TARGET_MIN,
     target_max: float = TARGET_MAX,
     hard_max: float = HARD_MAX_DURATION,
     max_lines: int = MAX_LINES,
     max_line_width: int = MAX_LINE_WIDTH,
     pause_gap: float = PAUSE_GAP,
+    clause_break_ratio: float = CLAUSE_BREAK_RATIO,
 ) -> list[dict[str, Any]]:
     if not tokens:
         return []
 
     cues: list[dict[str, Any]] = []
     buf: list[dict[str, Any]] = []
+    max_cue_width = max_line_width * max_lines
+    clause_ratio = max(0.0, min(1.0, float(clause_break_ratio)))
 
     def flush(*, force: bool = False) -> None:
         nonlocal buf
@@ -79,15 +84,15 @@ def segment_tokens(
         should_cut = False
         if ch in SENTENCE_END and dur >= min_duration:
             should_cut = True
-        elif ch in CLAUSE_BREAK and dur >= target_max * 0.6:
+        elif ch in CLAUSE_BREAK and dur >= target_max * clause_ratio:
             should_cut = True
-        elif next_tok is not None and gap >= pause_gap and dur >= TARGET_MIN:
+        elif next_tok is not None and gap >= pause_gap and dur >= target_min:
             should_cut = True
         elif dur >= hard_max:
             should_cut = True
         elif dur >= target_max and display_width(text) >= max_line_width:
             should_cut = True
-        elif display_width(text) >= MAX_CUE_WIDTH and dur >= min_duration:
+        elif display_width(text) >= max_cue_width and dur >= min_duration:
             should_cut = True
 
         if should_cut:
