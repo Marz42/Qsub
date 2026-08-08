@@ -2,7 +2,7 @@
 
 本地离线 Windows 字幕生成工具。架构：**成熟 CLI Core + 薄 PySide6 GUI**。
 
-当前进度：**Phase 8 — Installer（Inno Setup）**
+当前进度：**Phase 9 — Acceptance**
 
 ## 开发安装
 
@@ -48,6 +48,12 @@ uv run python scripts/build_installer.py --require-models
 
 产出：`dist/installer/QwenSubtitle-Setup.exe` + `.bin` 分卷。详见 [`packaging/inno/README.md`](packaging/inno/README.md)。
 
-## 路线图
+## 验收（Phase 9）
 
-- Phase 9 — Acceptance
+```powershell
+Remove-Item Env:QSUB_ROOT -ErrorAction SilentlyContinue
+uv run python scripts/acceptance_check.py
+uv run python scripts/acceptance_check.py --media D:\test.wav --language Chinese
+```
+
+清单与硬件矩阵见 [`acceptance/README.md`](acceptance/README.md)。

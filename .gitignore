@@ -27,6 +27,9 @@ spikes/**/out/
 *.wav
 !tests/fixtures/**/*.wav
 
+# Acceptance run artifacts
+acceptance/last-run.json
+
 # User / OS
 .DS_Store
 Thumbs.db

@@ -1,13 +1,21 @@
-"""SRT renderer (Spec §20)."""
+"""SRT renderer / parser (Spec §20)."""
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Literal
 
 from qsub_core.io_util import atomic_write_bytes
 
 EncodingName = Literal["utf-8", "utf-8-bom"]
+
+_TS_RE = re.compile(
+    r"(?P<h>\d{2}):(?P<m>\d{2}):(?P<s>\d{2})[,.](?P<ms>\d{3})"
+)
+_ARROW_RE = re.compile(
+    r"^(?P<a>\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(?P<b>\d{2}:\d{2}:\d{2}[,.]\d{3})"
+)
 
 
 def format_srt_timestamp(seconds: float) -> str:
@@ -18,6 +26,61 @@ def format_srt_timestamp(seconds: float) -> str:
     minutes, rem = divmod(rem, 60_000)
     secs, ms = divmod(rem, 1000)
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{ms:03d}"
+
+
+def parse_srt_timestamp(value: str) -> float:
+    m = _TS_RE.fullmatch(value.strip())
+    if not m:
+        raise ValueError(f"invalid SRT timestamp: {value!r}")
+    return (
+        int(m.group("h")) * 3600
+        + int(m.group("m")) * 60
+        + int(m.group("s"))
+        + int(m.group("ms")) / 1000.0
+    )
+
+
+def parse_srt(text: str) -> list[dict[str, Any]]:
+    """Parse SRT text into cue dicts with id/start/end/text."""
+    body = text.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not body:
+        return []
+    cues: list[dict[str, Any]] = []
+    for block in re.split(r"\n\s*\n", body):
+        lines = block.split("\n")
+        while lines and lines[0].strip() == "":
+            lines.pop(0)
+        while lines and lines[-1].strip() == "":
+            lines.pop()
+        if len(lines) < 2:
+            continue
+        idx = 0
+        cue_id: int | None = None
+        if lines[0].strip().isdigit():
+            cue_id = int(lines[0].strip())
+            idx = 1
+        if idx >= len(lines):
+            continue
+        am = _ARROW_RE.match(lines[idx].strip())
+        if not am:
+            continue
+        start = parse_srt_timestamp(am.group("a"))
+        end = parse_srt_timestamp(am.group("b"))
+        text_lines = lines[idx + 1 :]
+        cues.append(
+            {
+                "id": cue_id if cue_id is not None else len(cues) + 1,
+                "start": start,
+                "end": end,
+                "text": "\n".join(text_lines),
+            }
+        )
+    return cues
+
+
+def load_srt(path: Path | str) -> list[dict[str, Any]]:
+    raw = Path(path).expanduser().resolve().read_text(encoding="utf-8-sig")
+    return parse_srt(raw)
 
 
 def render_srt(subtitles: list[dict[str, Any]]) -> str:
