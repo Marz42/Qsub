@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Orchestrate a release-oriented portable build (Phase 6 entrypoint)."""
+"""Orchestrate portable runtime + optional Inno installer (Phase 6/8)."""
 
 from __future__ import annotations
 
@@ -21,7 +21,10 @@ def main() -> int:
     p.add_argument("--with-ffmpeg", action="store_true", default=True)
     p.add_argument("--no-ffmpeg", action="store_true")
     p.add_argument("--with-models", action="store_true")
+    p.add_argument("--installer", action="store_true", help="Also compile Inno Setup package")
+    p.add_argument("--require-models", action="store_true", help="Installer must include models/")
     p.add_argument("--out", type=Path, default=None)
+    p.add_argument("--version", default="0.1.0")
     args = p.parse_args()
 
     run([sys.executable, str(ROOT / "scripts" / "verify_models.py")])
@@ -34,7 +37,21 @@ def main() -> int:
     if not args.no_ffmpeg:
         cmd.append("--with-ffmpeg")
     run(cmd)
-    print("Release portable tree build finished.")
+
+    if args.installer:
+        inst = [
+            sys.executable,
+            str(ROOT / "scripts" / "build_installer.py"),
+            "--version",
+            args.version,
+        ]
+        if args.out:
+            inst += ["--source", str(args.out)]
+        if args.require_models or args.with_models:
+            inst.append("--require-models")
+        run(inst)
+
+    print("Release build finished.")
     return 0
 
 

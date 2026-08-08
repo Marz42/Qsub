@@ -1,0 +1,9 @@
+QwenSubtitle — proprietary application code.
+
+Third-party components (Python, PyTorch, Qwen-ASR, Silero VAD, FFmpeg, PySide6/Qt,
+and other dependencies) are licensed under their respective terms. See
+THIRD_PARTY_NOTICES.txt and manifests/licenses.json in the install directory.
+
+Commercial redistribution requires a license review of Inno Setup, Qt LGPL,
+FFmpeg build license, Qwen model license, and Python/PyTorch dependency licenses
+(Engineering Spec §39).

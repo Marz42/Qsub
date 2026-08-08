@@ -10,22 +10,25 @@ From repo root (dev machine with `uv` + network once):
 # FFmpeg into repo bin/ (updates manifests/ffmpeg-lock.json)
 uv run python scripts/fetch_ffmpeg.py
 
-# Portable layout (venv + deps). Add --with-models to copy local weights.
+# Portable layout (venv + deps + GUI). Add --with-models to copy local weights.
 uv run python scripts/build_runtime.py --clean --with-ffmpeg
 
-# Or full helper:
-uv run python scripts/release.py --with-models
+# Or full helper (+ optional Inno installer):
+uv run python scripts/release.py --with-models --installer
 ```
 
 Output:
 
 ```text
 dist/portable/QwenSubtitle/
+  QwenSubtitle.vbs  # GUI (no console)
+  QwenSubtitle.cmd
   qsub.cmd
-  runtime\          # embedded Python + site-packages
+  runtime\          # embedded Python + site-packages (+ PySide6)
   bin\ffmpeg.exe
   models\
   manifests\
+  licenses\
 ```
 
 ## Clean-machine smoke
@@ -44,5 +47,5 @@ On a PC **without** system Python / CUDA Toolkit / FFmpeg on PATH:
 ## Notes
 
 - Spec forbids compiling the full PyTorch stack into the GUI; this layout keeps ML in `runtime\`.
-- GUI (Phase 7) will be a thin PySide6 app that only `subprocess`es `qsub.cmd`.
-- Installer (Phase 8) wraps this tree with Inno Setup disk spanning.
+- GUI is a thin PySide6 app that only `subprocess`es `qsub` (see `gui/`).
+- Installer (Phase 8) wraps this tree with Inno Setup disk spanning (`packaging/inno/`).

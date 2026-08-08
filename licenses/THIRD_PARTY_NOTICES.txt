@@ -1,0 +1,18 @@
+QwenSubtitle third-party notices (MVP placeholder)
+
+This install bundles an embedded CPython runtime and third-party packages
+resolved from pyproject.toml / uv.lock at build time. Notable components:
+
+  - Python — PSF License
+  - PyTorch / torchaudio — BSD-style (see PyTorch LICENSE)
+  - qwen-asr / Qwen3 models — Apache-2.0 / model card terms (Alibaba Qwen)
+  - transformers / huggingface_hub — Apache-2.0
+  - silero-vad — MIT / package license
+  - FFmpeg (GyanD essentials build) — LGPL/GPL depending on build configuration;
+    verify the exact build license before commercial redistribution
+  - PySide6 / Qt — LGPL v3 (dynamic linking); see Qt Company LGPL obligations
+  - Inno Setup — used only to produce the installer, not redistributed inside the app
+
+Full package versions are recorded in manifests/runtime-lock.json and
+manifests/ffmpeg-lock.json. Expand manifests/licenses.json during release with
+per-package license texts as required for your distribution channel.

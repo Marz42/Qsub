@@ -83,13 +83,19 @@ def main() -> int:
         print(f"missing {python_exe}")
         return 1
 
-    # 2) Install locked project + deps into the venv
+    # 2) Install locked project + deps + GUI into the venv
     env = os.environ.copy()
     env["UV_PROJECT_ENVIRONMENT"] = str(runtime)
-    run(["uv", "sync", "--frozen", "--no-dev"], env=env)
+    run(["uv", "sync", "--frozen", "--no-dev", "--extra", "gui"], env=env)
 
-    # Ensure console script exists; also keep -m qsub_core.cli path
-    run([str(python_exe), "-c", "import qsub_core, torch; print(qsub_core.__version__, torch.__version__)"])
+    # Ensure console script / GUI import path exist
+    run(
+        [
+            str(python_exe),
+            "-c",
+            "import qsub_core, torch, gui; print(qsub_core.__version__, torch.__version__, gui.__version__)",
+        ]
+    )
 
     # 3) Manifests / launcher / scripts
     manifests.mkdir(parents=True, exist_ok=True)
@@ -125,6 +131,7 @@ def main() -> int:
 
     launcher_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(ROOT / "launcher" / "qsub_launcher.py", launcher_dir / "qsub_launcher.py")
+    shutil.copy2(ROOT / "launcher" / "gui_launcher.py", launcher_dir / "gui_launcher.py")
 
     write_text(
         out / "qsub.cmd",
@@ -141,6 +148,28 @@ def main() -> int:
         "$env:QSUB_ROOT = $root\r\n"
         "& \"$root\\runtime\\Scripts\\python.exe\" -m qsub_core.cli @args\r\n"
         "exit $LASTEXITCODE\r\n",
+    )
+    # GUI: prefer pythonw (no console). Spec name QwenSubtitle.exe ≈ this entry + Start Menu shortcut.
+    write_text(
+        out / "QwenSubtitle.cmd",
+        "@echo off\r\n"
+        "setlocal\r\n"
+        "set \"QSUB_ROOT=%~dp0\"\r\n"
+        "if exist \"%~dp0runtime\\Scripts\\pythonw.exe\" (\r\n"
+        "  start \"\" \"%~dp0runtime\\Scripts\\pythonw.exe\" -m gui.main %*\r\n"
+        ") else (\r\n"
+        "  start \"\" \"%~dp0runtime\\Scripts\\python.exe\" -m gui.main %*\r\n"
+        ")\r\n",
+    )
+    write_text(
+        out / "QwenSubtitle.vbs",
+        'Set sh = CreateObject("WScript.Shell")\r\n'
+        'Set fso = CreateObject("Scripting.FileSystemObject")\r\n'
+        'root = fso.GetParentFolderName(WScript.ScriptFullName)\r\n'
+        'sh.Environment("PROCESS")("QSUB_ROOT") = root\r\n'
+        'pyw = root & "\\runtime\\Scripts\\pythonw.exe"\r\n'
+        'If Not fso.FileExists(pyw) Then pyw = root & "\\runtime\\Scripts\\python.exe"\r\n'
+        'sh.Run """" & pyw & """ -m gui.main", 0, False\r\n',
     )
 
     # 4) FFmpeg
@@ -161,11 +190,24 @@ def main() -> int:
             else:
                 print(f"warning: models/{name} missing; skip")
 
+    # 5b) License notices for installer / portable tree
+    licenses_dir = out / "licenses"
+    licenses_dir.mkdir(parents=True, exist_ok=True)
+    src_lic = ROOT / "licenses"
+    if src_lic.is_dir():
+        for f in src_lic.iterdir():
+            if f.is_file():
+                shutil.copy2(f, licenses_dir / f.name)
+
     write_text(
         out / "README.txt",
-        "QwenSubtitle portable CLI (Phase 6 runtime packaging)\r\n"
+        "QwenSubtitle portable runtime (CLI + Chinese GUI)\r\n"
         "\r\n"
-        "Usage:\r\n"
+        "GUI:\r\n"
+        "  QwenSubtitle.vbs   (recommended, no console)\r\n"
+        "  QwenSubtitle.cmd\r\n"
+        "\r\n"
+        "CLI:\r\n"
         "  qsub.cmd doctor\r\n"
         "  qsub.cmd probe video.mp4\r\n"
         "  qsub.cmd transcribe video.mp4 --language Chinese --overwrite\r\n"
@@ -175,7 +217,8 @@ def main() -> int:
         "  - Models under models\\ (or set QSUB_MODELS_DIR)\r\n"
         "  - ffmpeg/ffprobe under bin\\ (or on PATH)\r\n"
         "\r\n"
-        "This tree embeds its own Python runtime under runtime\\.\r\n",
+        "This tree embeds its own Python runtime under runtime\\.\r\n"
+        "See licenses\\ for third-party notices.\r\n",
     )
 
     # 6) Smoke

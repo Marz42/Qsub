@@ -1,5 +1,16 @@
 {
   "schema_version": 1,
-  "description": "Aggregated third-party notices for the installer (filled at release)",
-  "entries": []
+  "description": "Aggregated third-party notices for the installer",
+  "entries": [
+    {"name": "Python", "license": "PSF"},
+    {"name": "PyTorch", "license": "BSD-style"},
+    {"name": "torchaudio", "license": "BSD-style"},
+    {"name": "qwen-asr", "license": "Apache-2.0"},
+    {"name": "transformers", "license": "Apache-2.0"},
+    {"name": "silero-vad", "license": "see package"},
+    {"name": "FFmpeg", "license": "verify build (LGPL/GPL)"},
+    {"name": "PySide6", "license": "LGPL-3.0"},
+    {"name": "Qt", "license": "LGPL-3.0"}
+  ],
+  "notes": "Expand with full license texts before commercial release. See licenses/THIRD_PARTY_NOTICES.txt and Spec §39."
 }
