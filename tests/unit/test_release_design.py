@@ -76,6 +76,17 @@ def test_installer_does_not_strip_importable_testing_packages():
     assert 'Excludes: "__pycache__\\*,*.pyc,*.pyo,.pytest_cache\\*"' in installer
 
 
+def test_spinbox_buttons_have_explicit_vertical_hit_targets():
+    stylesheet = (build_runtime.ROOT / "gui" / "styles.qss").read_text(encoding="utf-8")
+
+    up_rule = stylesheet.split("QSpinBox::up-button, QDoubleSpinBox::up-button", 1)[1].split("}", 1)[0]
+    down_rule = stylesheet.split("QSpinBox::down-button, QDoubleSpinBox::down-button", 1)[1].split(
+        "}", 1
+    )[0]
+    assert "subcontrol-position: top right" in up_rule
+    assert "subcontrol-position: bottom right" in down_rule
+
+
 def test_resume_signature_invalidates_correct_stage():
     current = _signature()
     assert classify_resume_change(current, current, same_source_path=True, previous_pipeline_version=2) == "none"

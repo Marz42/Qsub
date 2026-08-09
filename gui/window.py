@@ -37,6 +37,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QStyle,
+    QStyleOptionSpinBox,
     QStackedWidget,
     QTextEdit,
     QVBoxLayout,
@@ -128,8 +130,53 @@ class DropZone(QWidget):
             self._on_paths(paths)
 
 
+class SegmentSpinBox(QDoubleSpinBox):
+    """Spin box with theme-independent, explicitly painted arrow glyphs."""
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        super().paintEvent(event)
+
+        option = QStyleOptionSpinBox()
+        self.initStyleOption(option)
+        controls = (
+            (QStyle.SubControl.SC_SpinBoxUp, True),
+            (QStyle.SubControl.SC_SpinBoxDown, False),
+        )
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(theme.CARBON if self.isEnabled() else theme.MUTED_INDIGO))
+        for control, points_up in controls:
+            rect = self.style().subControlRect(
+                QStyle.ComplexControl.CC_SpinBox,
+                option,
+                control,
+                self,
+            )
+            center = rect.center()
+            half_width = max(3.0, min(4.5, rect.width() / 4.0))
+            half_height = max(2.5, min(3.5, rect.height() / 4.0))
+            if points_up:
+                polygon = QPolygonF(
+                    [
+                        QPointF(center.x(), center.y() - half_height),
+                        QPointF(center.x() - half_width, center.y() + half_height),
+                        QPointF(center.x() + half_width, center.y() + half_height),
+                    ]
+                )
+            else:
+                polygon = QPolygonF(
+                    [
+                        QPointF(center.x() - half_width, center.y() - half_height),
+                        QPointF(center.x() + half_width, center.y() - half_height),
+                        QPointF(center.x(), center.y() + half_height),
+                    ]
+                )
+            painter.drawPolygon(polygon)
+
+
 def _spin(value: float, minimum: float, maximum: float, step: float, suffix: str = " 秒") -> QDoubleSpinBox:
-    w = QDoubleSpinBox()
+    w = SegmentSpinBox()
     w.setRange(minimum, maximum)
     w.setSingleStep(step)
     w.setDecimals(2)
