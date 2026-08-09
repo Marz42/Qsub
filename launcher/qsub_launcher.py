@@ -29,7 +29,6 @@ def find_root() -> Path:
 
 def find_python(root: Path) -> Path:
     candidates = [
-        root / "runtime" / "Scripts" / "python.exe",
         root / "runtime" / "python.exe",
         root / "runtime" / "bin" / "python",
     ]

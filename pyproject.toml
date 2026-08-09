@@ -33,11 +33,6 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/qsub_core", "gui"]
 
-[tool.hatch.build.targets.wheel.force-include]
-"gui/styles.qss" = "gui/styles.qss"
-"gui/fonts/NotoSansSC" = "gui/fonts/NotoSansSC"
-"gui/fonts/README.md" = "gui/fonts/README.md"
-
 [tool.uv]
 package = true
 override-dependencies = [

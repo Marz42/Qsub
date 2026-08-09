@@ -24,7 +24,9 @@ uv run qsub-gui
 
 - 拖放 / 选择媒体 → `qsub probe --json`
 - 「生成字幕」→ `qsub transcribe … --events ndjson`（含分句参数）
+- 单文件对同一路径使用稳定的 `%LOCALAPPDATA%\QwenSubtitle\jobs\gui-<hash>`，失败/取消后再次运行会自动续跑
 - 「取消」写入工作目录 `cancel.flag`
+- 未勾“保留处理缓存”时，成功后清理 WAV/ASR/Alignment 等可重建大文件；失败与取消缓存保留
 - 设置持久化 → `%LOCALAPPDATA%\QwenSubtitle\gui-config.json`
 
 ## 批量（v0.2）

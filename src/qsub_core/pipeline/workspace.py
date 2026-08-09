@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -70,6 +71,24 @@ class JobWorkspace:
     def write_job(self, payload: dict[str, Any]) -> None:
         atomic_write_json(self.job_json, payload)
 
+    def prune_intermediates(self) -> list[str]:
+        """Remove bulky reproducible cache after success; keep job/project/output."""
+        warnings: list[str] = []
+        for path in (self.audio_wav, self.probe_json, self.vad_json, self.chunks_json, self.tokens_json):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                warnings.append(f"{path}: {exc}")
+        for directory in (self.asr_dir, self.alignment_dir, self.alignment_repaired_dir):
+            if directory.is_dir():
+                try:
+                    shutil.rmtree(directory)
+                except OSError as exc:
+                    warnings.append(f"{directory}: {exc}")
+        return warnings
+
 
 def create_job_workspace(
     *,
@@ -96,7 +115,7 @@ def initial_job_record(
         "schema_version": 1,
         "job_id": job_id,
         "app_version": APP_VERSION,
-        "pipeline_version": 1,
+        "pipeline_version": 2,
         "status": "created",
         "source": {"path": source},
         "args": args,

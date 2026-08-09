@@ -4,30 +4,48 @@
   "entries": [
     {
       "name": "Qwen3-ASR-0.6B",
-      "version": "TBD",
+      "version": "5eb144179a02acc5e5ba31e748d22b0cf3e303b0",
       "source": "https://huggingface.co/Qwen/Qwen3-ASR-0.6B",
-      "revision": null,
+      "revision": "5eb144179a02acc5e5ba31e748d22b0cf3e303b0",
       "local_path": "models/Qwen3-ASR-0.6B",
-      "sha256": null,
-      "license": "TBD-review-before-release"
+      "license": "Apache-2.0",
+      "required_files": [
+        {"path": "config.json", "size": 6193, "sha256": "76d3ae4601ce939830b2517f4a6cadb86cc51316c3900af6b020b051c21a478c"},
+        {"path": "generation_config.json", "size": 142, "sha256": "1da527824d81e07118facff437e03f2e24a23311e3bdeb2368973fe77e5f275c"},
+        {"path": "model.safetensors", "size": 1876091704, "sha256": "79d6cbd4c98c7bbffe9db2edac07f56cd6637d0d5944b27f6c2b8353840323ea"},
+        {"path": "preprocessor_config.json", "size": 330, "sha256": "45e120a4eda2c20c5d7f2ea9354e63536bf35e27aa573fb7cdf78017b378770d"},
+        {"path": "tokenizer_config.json", "size": 12487, "sha256": "4942d005604266809309cabc9f4e9cb89ce855d59b14681fdc0e1cc62ea26c4c"},
+        {"path": "merges.txt", "size": 1671853, "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5"},
+        {"path": "vocab.json", "size": 2776833, "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"}
+      ]
     },
     {
       "name": "Qwen3-ForcedAligner-0.6B",
-      "version": "TBD",
+      "version": "c7cbfc2048c462b0d63a45797104fc9db3ad62b7",
       "source": "https://huggingface.co/Qwen/Qwen3-ForcedAligner-0.6B",
-      "revision": null,
+      "revision": "c7cbfc2048c462b0d63a45797104fc9db3ad62b7",
       "local_path": "models/Qwen3-ForcedAligner-0.6B",
-      "sha256": null,
-      "license": "TBD-review-before-release"
+      "license": "Apache-2.0",
+      "required_files": [
+        {"path": "config.json", "size": 5982, "sha256": "d616c65d46c4b90bdc651b0a0963ea932732241140f337f9bb6b0335a9c8ef09"},
+        {"path": "generation_config.json", "size": 115, "sha256": "948d089b23bca1d214e768d59c4438365665f52ec6d33678f4062206b3fbbb8c"},
+        {"path": "model.safetensors", "size": 1835544544, "sha256": "47831d0e82f96b20e9034dba01a075ee06436654719f6a68289e49f1b65ce0e7"},
+        {"path": "preprocessor_config.json", "size": 330, "sha256": "45e120a4eda2c20c5d7f2ea9354e63536bf35e27aa573fb7cdf78017b378770d"},
+        {"path": "tokenizer_config.json", "size": 12666, "sha256": "3ab80063f8511deb9566e6ad438d17b7a6277fcffd52d92854112f19d36bd81c"},
+        {"path": "merges.txt", "size": 1671853, "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5"},
+        {"path": "vocab.json", "size": 2776833, "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"}
+      ]
     },
     {
       "name": "silero-vad",
-      "version": "TBD",
+      "version": "6.2.1",
       "source": "https://github.com/snakers4/silero-vad",
-      "revision": null,
+      "revision": "silero-vad-pypi-6.2.1",
       "local_path": "models/silero-vad",
-      "sha256": null,
-      "license": "TBD-review-before-release"
+      "license": "MIT",
+      "required_files": [
+        {"path": "silero_vad.jit", "size": 2272526, "sha256": "e1122837f4154c511485fe0b9c64455f7b929c96fbb8d79fbdb336383ebd3720"}
+      ]
     }
   ]
 }

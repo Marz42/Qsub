@@ -16,9 +16,9 @@
 | Phase 3 ASR + Resume | ✅ | Safe Mode、`cancel.flag`、resume |
 | Phase 4 Alignment | ✅ | ForcedAlign + repair |
 | Phase 5 Subtitle Engine | ✅ | segment + `project.json` + SRT |
-| Phase 6 Runtime Packaging | ✅ | `scripts/build_runtime.py` → portable tree |
+| Phase 6 Runtime Packaging | ✅ 源码 | `scripts/build_runtime.py` → standalone CPython + 非 editable wheel；旧 `dist/` 需重新构建 |
 | Phase 7 Thin GUI | ✅ | 中文 UI、subprocess + NDJSON；Nintendo chrome + Noto Sans SC |
-| Phase 8 Installer | ✅ | Inno Setup；**默认不捆绑 ASR/Aligner**，`download-models.cmd` 显式拉取 |
+| Phase 8 Installer | ✅ 源码 | Inno Setup；**默认不捆绑 ASR/Aligner**，固定 revision/hash 后下载到 `%LOCALAPPDATA%` |
 | Batch Queue（§50 / §57 v0.2） | ✅ 提前 | `qsub batch` + GUI「批量」页；串行、失败默认可继续 |
 
 架构冻结（§56）仍遵守：GUI 不 import 模型；无 Electron / 服务端 / vLLM。
@@ -45,10 +45,11 @@
 **建议下一目标顺序（完成 v0.1）：**
 
 1. 重跑 `acceptance_check.py`（含短媒体；批量合入后单元测试已变多）
-2. 本机：resume 抽测 + 30/60 min 样本
-3. 干净机：安装包 → 联网 `download-models.cmd` → 断网转录
-4. 有条件则补 Win10 / RTX 30 / English
-5. 勾满 §55 后打 **v0.1.0** release 标签
+2. 重新构建 portable，并用 `acceptance_check.py --release-root dist\portable\QwenSubtitle` 验证无 venv/editable/外部路径
+3. 本机：resume 抽测 + 30/60 min 样本
+4. 干净机：安装包 → 联网 `download-models.cmd` → 断网转录
+5. 有条件则补 Win10 / RTX 30 / English
+6. 勾满 §55 后打 **v0.1.0** release 标签
 
 ---
 

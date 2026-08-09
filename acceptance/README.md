@@ -12,6 +12,8 @@
 Remove-Item Env:QSUB_ROOT -ErrorAction SilentlyContinue
 
 uv run python scripts/acceptance_check.py
+# 构建产物门禁：拒绝 venv、editable 安装和构建机绝对路径
+uv run python scripts/acceptance_check.py --release-root dist\portable\QwenSubtitle --skip-e2e
 # 短媒体端到端（可选）：
 uv run python scripts/acceptance_check.py --media D:\test.wav --language Chinese
 ```

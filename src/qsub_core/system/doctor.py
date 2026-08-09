@@ -16,13 +16,16 @@ from qsub_core.config import (
     ensure_user_dirs,
     vad_model_path,
 )
+from qsub_core.model_store import model_entry, validate_model_dir
 from qsub_core.system.binaries import find_executable
 from qsub_core.system.gpu import probe_gpu
 
 
-def _model_status(path: Path) -> dict[str, Any]:
-    exists = path.is_dir() and any(path.iterdir())
-    return {"path": str(path), "ok": exists}
+def _model_status(path: Path, name: str) -> dict[str, Any]:
+    try:
+        return validate_model_dir(path, model_entry(name), verify_hashes=False)
+    except (OSError, ValueError, KeyError) as exc:
+        return {"path": str(path), "ok": False, "issues": [str(exc)]}
 
 
 def _vad_status() -> dict[str, Any]:
@@ -48,8 +51,8 @@ def collect_doctor_report() -> dict[str, Any]:
     ffmpeg = find_executable("ffmpeg")
     ffprobe = find_executable("ffprobe")
 
-    asr = _model_status(asr_model_path())
-    aligner = _model_status(aligner_model_path())
+    asr = _model_status(asr_model_path(), "Qwen3-ASR-0.6B")
+    aligner = _model_status(aligner_model_path(), "Qwen3-ForcedAligner-0.6B")
     vad = _vad_status()
 
     checks = {
@@ -125,8 +128,9 @@ def format_doctor_text(report: dict[str, Any]) -> str:
             [
                 "",
                 "Models are not bundled with the installer by default.",
-                "On the install/portable root, run once (needs network):",
+                "Run once from the install/portable root (needs network):",
                 "  download-models.cmd",
+                "Models are stored under %LOCALAPPDATA%\\QwenSubtitle\\models.",
                 "Or (dev tree):",
                 "  uv run python scripts/download_models.py --confirm-download",
                 "Then re-run: qsub doctor",

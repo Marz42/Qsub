@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, Qt, QUrl
@@ -46,7 +45,7 @@ from PySide6.QtWidgets import (
 
 from gui.batch_panel import BatchPanel
 from gui.cli_process import STAGE_LABELS, CliProcess, humanize_error
-from gui.paths import discover_install_root, find_qsub_command
+from gui.paths import discover_install_root, find_qsub_command, work_dir_for_source
 from gui.settings import GuiSettings
 from gui import theme
 
@@ -679,7 +678,7 @@ class MainWindow(QMainWindow):
         out_path = Path(out)
 
         self.job_kind = "single"
-        self.work_dir = Path(tempfile.mkdtemp(prefix="qsub-gui-"))
+        self.work_dir = work_dir_for_source(self.input_path)
         self.footer_left.setText(f"work · {self.work_dir}")
         cmd = find_qsub_command() + [
             "transcribe",

@@ -105,3 +105,33 @@ def cancel_flag_path(work_dir: Path) -> Path:
 
 def is_cancel_requested(work_dir: Path) -> bool:
     return cancel_flag_path(work_dir).is_file()
+
+
+def clear_cancel_requested(work_dir: Path) -> None:
+    try:
+        cancel_flag_path(work_dir).unlink()
+    except FileNotFoundError:
+        pass
+
+
+def classify_resume_change(
+    previous: dict[str, Any],
+    current: dict[str, Any],
+    *,
+    same_source_path: bool,
+    previous_pipeline_version: int,
+) -> str:
+    """Return none|recognition|media for stage-safe cache invalidation."""
+    if (
+        not same_source_path
+        or previous_pipeline_version != int(current.get("pipeline_version", 0))
+        or previous.get("source_fingerprint") != current.get("source_fingerprint")
+        or previous.get("audio_stream") != current.get("audio_stream")
+    ):
+        return "media"
+    if any(
+        previous.get(key) != current.get(key)
+        for key in ("language", "asr_revision", "aligner_revision")
+    ):
+        return "recognition"
+    return "none"

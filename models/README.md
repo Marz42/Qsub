@@ -16,7 +16,7 @@ models/
 
 ## 安装后下载（推荐）
 
-在安装目录或便携根目录（含 `qsub.cmd` 的那一层）：
+在安装目录或便携根目录（含 `qsub.cmd` 的那一层）运行下载器；模型实际写入用户可写目录 `%LOCALAPPDATA%\QwenSubtitle\models`：
 
 ```powershell
 .\download-models.cmd
@@ -31,15 +31,15 @@ uv run python scripts/download_models.py --confirm-download
 uv run python scripts/download_models.py --only vad --confirm-download
 ```
 
-完成后：`qsub doctor` 应显示 READY。之后可断网转录。
+下载器固定 `manifests/model-lock.json` 中的 revision，先写 staging，验证文件大小与 SHA-256 后再切换。完成后：`qsub doctor` 应显示 READY。之后可断网转录。
 
 ## 可选环境变量
 
 | 变量 | 默认 |
 |------|------|
-| `QSUB_ASR_MODEL` | `models/Qwen3-ASR-0.6B` |
-| `QSUB_ALIGNER_MODEL` | `models/Qwen3-ForcedAligner-0.6B` |
-| `QSUB_VAD_MODEL` | `models/silero-vad` |
+| `QSUB_ASR_MODEL` | `%LOCALAPPDATA%/QwenSubtitle/models/Qwen3-ASR-0.6B` |
+| `QSUB_ALIGNER_MODEL` | `%LOCALAPPDATA%/QwenSubtitle/models/Qwen3-ForcedAligner-0.6B` |
+| `QSUB_VAD_MODEL` | `%LOCALAPPDATA%/QwenSubtitle/models/silero-vad` |
 | `QSUB_MODELS_DIR` | 覆盖整个 `models/` 根目录 |
 
 ## 气隙 / OEM

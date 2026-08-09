@@ -21,7 +21,8 @@
 #define MyAppName "QwenSubtitle"
 #define MyAppPublisher "QwenSubtitle"
 #define MyAppURL "https://github.com/"
-#define MyAppExeName "QwenSubtitle.vbs"
+#define MyAppExeName "runtime\pythonw.exe"
+#define MyAppExeParameters "-I -m gui.main"
 
 [Setup]
 AppId={{B2E8F0A1-6C3D-4E9F-A17B-8D4C2E5F9012}
@@ -38,7 +39,7 @@ InfoBeforeFile=..\..\licenses\THIRD_PARTY_NOTICES.txt
 OutputDir={#OutputDir}
 OutputBaseFilename=QwenSubtitle-Setup
 SetupIconFile=
-UninstallDisplayIcon={app}\runtime\Scripts\pythonw.exe
+UninstallDisplayIcon={app}\runtime\pythonw.exe
 ; NOTE: Do NOT use lzma2/ultra64 + SolidCompression on this tree.
 ; Portable runtime is ~5GB+ (torch DLLs already compressed); ultra64/solid
 ; can sit on "Compressing…" for hours and look hung (esp. slower disks/CPUs).
@@ -72,16 +73,17 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "addpath"; Description: "将 qsub.cmd 所在目录加入用户 PATH（可选）"; GroupDescription: "高级:"; Flags: unchecked
 
 [Files]
-; Exclude test trees / caches to shrink the offline package (runtime still works).
+; Only remove generated caches. Do not exclude directories named test/tests/testing:
+; some libraries expose runtime APIs from them (for example torch.testing).
 Source: "{#SourceDir}\*"; DestDir: "{app}"; \
   Flags: ignoreversion recursesubdirs createallsubdirs; \
-  Excludes: "__pycache__\*,*.pyc,*.pyo,.pytest_cache\*,*\tests\*,*\test\*,*\testing\*"
+  Excludes: "__pycache__\*,*.pyc,*.pyo,.pytest_cache\*"
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Comment: "本地离线字幕生成"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "{#MyAppExeParameters}"; WorkingDir: "{app}"; Comment: "本地离线字幕生成"
 Name: "{group}\qsub CLI 帮助"; Filename: "{cmd}"; Parameters: "/k ""{app}\qsub.cmd"" --help"; WorkingDir: "{app}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "{#MyAppExeParameters}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Registry]
 ; Optional user PATH append for CLI (qsub.cmd)
@@ -90,7 +92,7 @@ Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; \
   Check: NeedsAddPath(ExpandConstant('{app}'))
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "启动 {#MyAppName}"; Flags: nowait postinstall skipifsilent shellexec
+Filename: "{app}\{#MyAppExeName}"; Parameters: "{#MyAppExeParameters}"; WorkingDir: "{app}"; Description: "启动 {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [Code]
 function NeedsAddPath(Param: string): Boolean;

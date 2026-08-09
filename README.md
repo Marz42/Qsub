@@ -13,7 +13,7 @@ uv run python scripts/download_models.py --confirm-download
 uv run python scripts/fetch_ffmpeg.py
 ```
 
-安装包**默认不捆绑** ASR/Aligner；开发与用户都用显式下载脚本（见 [`models/README.md`](models/README.md)）。
+安装包**默认不捆绑** ASR/Aligner；显式下载的固定 revision 模型经 SHA-256 验证后保存到 `%LOCALAPPDATA%\QwenSubtitle\models`（见 [`models/README.md`](models/README.md)）。
 
 ## CLI
 
@@ -36,11 +36,11 @@ uv run qsub-gui
 
 次条 **单文件 | 批量**。单文件走 `qsub transcribe`；批量一次启动 `qsub batch … --events ndjson`。详见 [`gui/README.md`](gui/README.md)。GUI 仅子进程调 CLI，不加载模型。
 
-## 便携运行时（Phase 6）
+## 独立运行时（Phase 6）
 
 ```powershell
 uv run python scripts/build_runtime.py --clean --with-ffmpeg
-dist\portable\QwenSubtitle\download-models.cmd   # 首次联网
+dist\portable\QwenSubtitle\download-models.cmd   # 首次联网；模型进入用户数据目录
 dist\portable\QwenSubtitle\qsub.cmd doctor
 dist\portable\QwenSubtitle\QwenSubtitle.vbs
 ```
@@ -56,7 +56,7 @@ uv run python scripts/build_installer.py
 # 或：uv run python scripts/release.py --installer
 ```
 
-产出约 **1.7 GB**（主要为 PyTorch CUDA，不含 ASR 权重）：`QwenSubtitle-Setup.exe` + `.bin`。  
+产出约 **1.7 GB**（主要为 PyTorch CUDA，不含 ASR 权重）：`QwenSubtitle-Setup.exe` + `.bin`。运行时是完整 standalone CPython，不依赖构建机 Python 或源码目录。
 安装后运行一次 `download-models.cmd`。详见 [`packaging/inno/README.md`](packaging/inno/README.md)。
 
 ## 验收（Phase 9 — 当前主线）

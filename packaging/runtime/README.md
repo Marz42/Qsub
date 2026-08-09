@@ -34,7 +34,7 @@ dist/portable/QwenSubtitle/
   qsub.cmd
   download-models.cmd
   scripts\download_models.py
-  runtime\          # embedded Python + site-packages (+ PySide6 + huggingface_hub)
+  runtime\          # complete standalone CPython + non-editable locked site-packages
   bin\ffmpeg.exe
   models\           # README + VAD jit; ASR/Aligner after download-models.cmd
   manifests\
@@ -47,7 +47,7 @@ On a PC **without** system Python / CUDA Toolkit / FFmpeg on PATH:
 
 1. Copy `dist/portable/QwenSubtitle`
 2. Ensure NVIDIA driver is installed
-3. Online once:
+3. Online once（模型写入 `%LOCALAPPDATA%\QwenSubtitle\models`）:
 
 ```powershell
 .\download-models.cmd
@@ -60,4 +60,5 @@ On a PC **without** system Python / CUDA Toolkit / FFmpeg on PATH:
 - Spec forbids compiling the full PyTorch stack into the GUI; this layout keeps ML in `runtime\`.
 - GUI is a thin PySide6 app that only `subprocess`es `qsub` (see `gui/`).
 - Transcription never auto-downloads models; `download-models.cmd` is explicit.
+- Release builds reject `pyvenv.cfg`, editable `.pth`, and any `.pth` path outside the runtime tree.
 - Installer (Phase 8) wraps this tree with Inno Setup disk spanning (`packaging/inno/`).

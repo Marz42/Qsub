@@ -13,7 +13,10 @@ import argparse
 import os
 import shutil
 import sys
+import uuid
 from pathlib import Path
+
+from qsub_core.model_store import load_model_lock, validate_model_dir, write_model_marker
 
 
 def resolve_install_root() -> Path:
@@ -34,7 +37,13 @@ def resolve_models_dir(explicit: Path | None = None) -> Path:
     env = os.environ.get("QSUB_MODELS_DIR")
     if env:
         return Path(env).expanduser().resolve()
-    return resolve_install_root() / "models"
+    root = resolve_install_root()
+    if (root / "pyproject.toml").is_file() and (root / "src" / "qsub_core").is_dir():
+        return root / "models"
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        return Path(local) / "QwenSubtitle" / "models"
+    return Path.home() / ".qwensubtitle" / "models"
 
 
 def export_silero_vad(dest: Path) -> None:
@@ -67,22 +76,103 @@ def export_silero_vad(dest: Path) -> None:
         raise SystemExit("could not locate bundled silero_vad weights in package files")
 
 
-def _targets(models: Path) -> dict[str, dict]:
+def _targets(models: Path, lock: dict) -> dict[str, dict]:
+    by_name = {str(e.get("name")): e for e in lock.get("entries") or []}
     return {
         "asr": {
             "repo": "Qwen/Qwen3-ASR-0.6B",
             "dest": models / "Qwen3-ASR-0.6B",
+            "entry": by_name["Qwen3-ASR-0.6B"],
         },
         "aligner": {
             "repo": "Qwen/Qwen3-ForcedAligner-0.6B",
             "dest": models / "Qwen3-ForcedAligner-0.6B",
+            "entry": by_name["Qwen3-ForcedAligner-0.6B"],
         },
         "vad": {
             "repo": "snakers4/silero-vad",
             "dest": models / "silero-vad",
+            "entry": by_name["silero-vad"],
             "note": "Exports silero_vad.jit from the installed silero-vad package (offline).",
         },
     }
+
+
+def _required_bytes(entry: dict) -> int:
+    return sum(int(item.get("size") or 0) for item in entry.get("required_files") or [])
+
+
+def _commit_staging(staging: Path, dest: Path) -> None:
+    backup = dest.with_name(f"{dest.name}.backup-{uuid.uuid4().hex[:8]}")
+    moved_old = False
+    committed = False
+    try:
+        if dest.exists():
+            dest.replace(backup)
+            moved_old = True
+        staging.replace(dest)
+        committed = True
+    except Exception:
+        if moved_old and backup.exists() and not dest.exists():
+            backup.replace(dest)
+        raise
+    finally:
+        if committed and backup.exists():
+            shutil.rmtree(backup, ignore_errors=True)
+
+
+def _install_target(key: str, target: dict) -> None:
+    dest: Path = target["dest"]
+    entry: dict = target["entry"]
+    current = validate_model_dir(dest, entry, verify_hashes=True)
+    if current["ok"]:
+        if not current["revision_verified"]:
+            write_model_marker(dest, entry)
+        print(f"Already verified: {dest}")
+        return
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    required = _required_bytes(entry)
+    free = shutil.disk_usage(dest.parent).free
+    if required and free < required + 512 * 1024 * 1024:
+        raise RuntimeError(
+            f"insufficient disk space for {entry.get('name')}: "
+            f"need at least {(required + 512 * 1024 * 1024) / (1024**3):.2f} GiB"
+        )
+
+    staging = dest.with_name(f"{dest.name}.staging-{uuid.uuid4().hex[:8]}")
+    try:
+        if key == "vad":
+            export_silero_vad(staging)
+        else:
+            try:
+                from huggingface_hub import snapshot_download
+            except ImportError as exc:
+                raise RuntimeError(
+                    "缺少 huggingface_hub。便携/安装包请使用带 fetch extra 的 runtime；"
+                    "开发树：uv sync --extra fetch 或 --extra dev"
+                ) from exc
+            revision = str(entry.get("revision") or "")
+            if not revision:
+                raise RuntimeError(f"model revision is not pinned: {entry.get('name')}")
+            print(f"Downloading {target['repo']}@{revision} -> {staging} ...")
+            snapshot_download(
+                repo_id=target["repo"],
+                revision=revision,
+                local_dir=str(staging),
+            )
+        checked = validate_model_dir(staging, entry, verify_hashes=True)
+        if not checked["ok"]:
+            raise RuntimeError(
+                f"model verification failed for {entry.get('name')}: "
+                + "; ".join(checked["issues"])
+            )
+        write_model_marker(staging, entry)
+        _commit_staging(staging, dest)
+        print(f"Installed and verified: {dest}")
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
 
 
 def main() -> int:
@@ -105,14 +195,16 @@ def main() -> int:
 
     models = resolve_models_dir(args.models_dir)
     root = resolve_install_root()
-    targets = _targets(models)
+    lock_path = root / "manifests" / "model-lock.json"
+    lock = load_model_lock(lock_path)
+    targets = _targets(models, lock)
     keys = ["asr", "aligner", "vad"] if args.only == "all" else [args.only]
 
     print(f"Install root: {root}")
     print(f"Models dir:   {models}")
     for key in keys:
         t = targets[key]
-        print(f"[{key}] repo={t['repo']}")
+        print(f"[{key}] repo={t['repo']} revision={t['entry'].get('revision')}")
         print(f"      dest={t['dest']}")
         if t.get("note"):
             print(f"      note={t['note']}")
@@ -123,24 +215,12 @@ def main() -> int:
         print("或在安装目录运行：download-models.cmd")
         return 0
 
-    for key in keys:
-        t = targets[key]
-        if key == "vad":
-            export_silero_vad(t["dest"])
-            continue
-        try:
-            from huggingface_hub import snapshot_download
-        except ImportError:
-            print(
-                "缺少 huggingface_hub。便携/安装包请用带 fetch extra 的 runtime；"
-                "开发树：uv sync --extra fetch 或 --extra dev",
-                file=sys.stderr,
-            )
-            return 2
-        t["dest"].parent.mkdir(parents=True, exist_ok=True)
-        print(f"Downloading {t['repo']} -> {t['dest']} ...")
-        snapshot_download(repo_id=t["repo"], local_dir=str(t["dest"]))
-        print(f"Done: {t['dest']}")
+    try:
+        for key in keys:
+            _install_target(key, targets[key])
+    except (OSError, RuntimeError, ValueError) as exc:
+        print(f"下载/验证失败：{exc}", file=sys.stderr)
+        return 3
 
     print("完成。可运行：qsub doctor")
     return 0

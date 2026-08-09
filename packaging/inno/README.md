@@ -5,7 +5,8 @@ Packages `dist/portable/QwenSubtitle` with **Inno Setup 7** and **disk spanning*
 PyTorch CUDA runtime (~5 GiB uncompressed → ~1.7 GiB compressed **without** ASR weights).
 
 **Default release does not bundle ASR/Aligner models.** Users run `download-models.cmd`
-once after install (network), then work offline.
+once after install; pinned and verified weights are stored under
+`%LOCALAPPDATA%\QwenSubtitle\models`, then the app works offline.
 
 ## Prerequisites
 
@@ -62,7 +63,7 @@ dist/installer/
 ## First-run on a clean PC
 
 1. Install setup + `.bin` slices
-2. Online: run `download-models.cmd` from the install directory
+2. Online: run `download-models.cmd` from the install directory（无需写入 Program Files）
 3. `qsub.cmd doctor` → READY
 4. Offline transcription works thereafter
 

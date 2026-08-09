@@ -26,8 +26,6 @@ def find_root() -> Path:
 
 def find_pythonw(root: Path) -> Path:
     candidates = [
-        root / "runtime" / "Scripts" / "pythonw.exe",
-        root / "runtime" / "Scripts" / "python.exe",
         root / "runtime" / "pythonw.exe",
         root / "runtime" / "python.exe",
     ]

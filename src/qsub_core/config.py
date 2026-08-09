@@ -81,7 +81,16 @@ def default_models_dir() -> Path:
     env = os.environ.get("QSUB_MODELS_DIR")
     if env:
         return Path(env).expanduser().resolve()
-    return install_root() / "models"
+    # Full air-gap/OEM builds may ship both large models next to the app.
+    # Otherwise models are mutable user data and must never be written under
+    # Program Files.
+    root = install_root()
+    bundled = root / "models"
+    if (root / "pyproject.toml").is_file() and (root / "src" / "qsub_core").is_dir():
+        return bundled
+    if (bundled / ".qsub-bundled-models.json").is_file():
+        return bundled
+    return user_data_dir() / "models"
 
 
 def asr_model_path() -> Path:

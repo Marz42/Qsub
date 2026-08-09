@@ -137,10 +137,10 @@ ERROR_MESSAGES = {
     ),
     "MODEL_MISSING": (
         "模型缺失",
-        "未找到本地模型文件。安装包默认不附带 ASR/对齐模型。\n\n"
-        "请在安装目录（或便携根目录）联网运行一次：\n"
+        "未找到完整且验证通过的本地模型。安装包默认不附带 ASR/对齐模型。\n\n"
+        "请联网运行一次：\n"
         "  download-models.cmd\n"
-        "或将权重放到 models\\Qwen3-ASR-0.6B 与 models\\Qwen3-ForcedAligner-0.6B。\n"
+        "模型会保存到 %LOCALAPPDATA%\\QwenSubtitle\\models。\n"
         "下载完成后可断网使用；转录不会自动联网下载。\n\n"
         "错误代码：MODEL_MISSING",
     ),

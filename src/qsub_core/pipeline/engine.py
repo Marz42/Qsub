@@ -18,12 +18,15 @@ from qsub_core.events import EventEmitter
 from qsub_core.io_util import atomic_write_json
 from qsub_core.media.extract import ExtractError, extract_audio
 from qsub_core.media.probe import ProbeError, probe_media, select_audio_stream
+from qsub_core.model_store import model_revision
 from qsub_core.pipeline.audio_io import load_mono_wav, slice_wav
 from qsub_core.pipeline.chunk_plan import ChunkPlan, plan_chunks_from_vad
 from qsub_core.pipeline.fingerprint import source_fingerprint
 from qsub_core.pipeline.resume import (
     alignment_chunk_path,
     asr_chunk_path,
+    clear_cancel_requested,
+    classify_resume_change,
     is_cancel_requested,
     list_completed_alignment_chunks,
     list_completed_asr_chunks,
@@ -94,6 +97,14 @@ class PipelineEngine:
             return errors.INVALID_INPUT
 
         self.ws = create_job_workspace(work_dir=self.opts.work_dir)
+        clear_cancel_requested(self.ws.root)
+        try:
+            fp = source_fingerprint(src)
+        except OSError as exc:
+            self.events.emit("error", code="INVALID_INPUT", message=str(exc))
+            return errors.INVALID_INPUT
+
+        signature = self._resume_signature(fp)
         job = initial_job_record(
             job_id=self.ws.job_id,
             source=str(src),
@@ -113,19 +124,30 @@ class PipelineEngine:
                 "clause_break_ratio": self.opts.clause_break_ratio,
             },
         )
-        if self.opts.resume and self.ws.job_json.is_file():
-            existing = load_json(self.ws.job_json)
-            if isinstance(existing, dict) and existing.get("source", {}).get("path") == str(src):
-                prev_lang = (existing.get("args") or {}).get("language", "auto")
+        job["source"]["fingerprint"] = fp
+        job["resume_signature"] = signature
+        existing = load_json(self.ws.job_json) if self.ws.job_json.is_file() else None
+        if not self.opts.resume and isinstance(existing, dict):
+            self._invalidate_media()
+        elif self.opts.resume and isinstance(existing, dict):
+            same_source_path = existing.get("source", {}).get("path") == str(src)
+            previous_signature = existing.get("resume_signature") or {}
+            change = classify_resume_change(
+                previous_signature,
+                signature,
+                same_source_path=same_source_path,
+                previous_pipeline_version=int(existing.get("pipeline_version", 0)),
+            )
+            if change == "media":
+                log.info("resume signature changed at media stage; invalidating all cached artifacts")
+                self._invalidate_media()
+            elif same_source_path:
                 job["stages_completed"] = list(existing.get("stages_completed") or [])
                 job["job_id"] = existing.get("job_id", job["job_id"])
                 self.ws.job_id = job["job_id"]
-                # Language change invalidates ASR and descendants (Spec §28).
-                if prev_lang != self.opts.language:
+                if change == "recognition":
                     log.info(
-                        "language changed %r → %r; invalidating ASR/alignment artifacts",
-                        prev_lang,
-                        self.opts.language,
+                        "recognition signature changed; invalidating ASR/alignment artifacts"
                     )
                     self._invalidate_asr()
                     self._invalidate_alignment()
@@ -138,14 +160,6 @@ class PipelineEngine:
         self.ws.write_job(job)
         self.events.emit("job_started", job_id=self.ws.job_id, work_dir=str(self.ws.root))
         log.info("job %s work_dir=%s source=%s", self.ws.job_id, self.ws.root, src)
-
-        try:
-            fp = source_fingerprint(src)
-            job["source"]["fingerprint"] = fp
-            self.ws.write_job(job)
-        except OSError as exc:
-            self.events.emit("error", code="INVALID_INPUT", message=str(exc))
-            return errors.INVALID_INPUT
 
         code, probe, stream = self._stage_probe(job)
         if code != errors.SUCCESS:
@@ -185,6 +199,11 @@ class PipelineEngine:
         ]
         if srt_path is not None:
             job["output_srt"] = str(srt_path)
+        if not self.opts.keep_work:
+            prune_warnings = self.ws.prune_intermediates()
+            job["cache_pruned"] = not prune_warnings
+            if prune_warnings:
+                job["cache_prune_warnings"] = prune_warnings
         self.ws.write_job(job)
 
         elapsed = round(time.perf_counter() - t0, 3)
@@ -205,6 +224,26 @@ class PipelineEngine:
             elapsed,
         )
         return errors.SUCCESS
+
+    def _resume_signature(self, fingerprint: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "pipeline_version": 2,
+            "source_fingerprint": fingerprint.get("fingerprint"),
+            "audio_stream": str(self.opts.audio_stream),
+            "language": str(self.opts.language),
+            "asr_revision": model_revision("Qwen3-ASR-0.6B"),
+            "aligner_revision": model_revision("Qwen3-ForcedAligner-0.6B"),
+        }
+
+    def _invalidate_media(self) -> None:
+        assert self.ws is not None
+        self._invalidate_asr()
+        self._invalidate_alignment()
+        for path in (self.ws.probe_json, self.ws.audio_wav, self.ws.vad_json, self.ws.chunks_json):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
 
     def _invalidate_asr(self) -> None:
         assert self.ws is not None
@@ -497,6 +536,7 @@ class PipelineEngine:
                     "language": result.language,
                     "text": result.text,
                     "model": result.model,
+                    "model_revision": model_revision("Qwen3-ASR-0.6B"),
                     "elapsed_seconds": round(time.perf_counter() - t1, 3),
                 }
                 path = asr_chunk_path(self.ws.asr_dir, ch.id)
@@ -616,6 +656,7 @@ class PipelineEngine:
                             "items": [],
                             "warning": "empty_asr_text",
                             "model": "Qwen3-ForcedAligner-0.6B",
+                            "model_revision": model_revision("Qwen3-ForcedAligner-0.6B"),
                         }
                         atomic_write_json(alignment_chunk_path(self.ws.alignment_dir, ch.id), record)
                         done.add(ch.id)
@@ -641,6 +682,7 @@ class PipelineEngine:
                         "language": language,
                         "items": items,
                         "model": result.model,
+                        "model_revision": model_revision("Qwen3-ForcedAligner-0.6B"),
                         "elapsed_seconds": round(time.perf_counter() - t1, 3),
                     }
                     # Raw aligner output — do not overwrite with repairs (Spec §15).

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import hashlib
 import shutil
 import sys
 from pathlib import Path
@@ -12,7 +13,7 @@ def _looks_like_install_root(path: Path) -> bool:
     return (
         (path / "qsub.cmd").is_file()
         or (path / "manifests" / "runtime-lock.json").is_file()
-        or (path / "runtime" / "Scripts" / "python.exe").is_file()
+        or (path / "runtime" / "python.exe").is_file()
     )
 
 
@@ -81,7 +82,7 @@ def find_qsub_command() -> list[str]:
         cmd = root / "qsub.cmd"
         if cmd.is_file():
             return ["cmd", "/c", str(cmd)]
-        runtime_py = root / "runtime" / "Scripts" / "python.exe"
+        runtime_py = root / "runtime" / "python.exe"
         if runtime_py.is_file():
             return [str(runtime_py), "-m", "qsub_core.cli"]
 
@@ -97,3 +98,12 @@ def user_config_path() -> Path:
     base = Path(local) / "QwenSubtitle" if local else Path.home() / ".qwensubtitle"
     base.mkdir(parents=True, exist_ok=True)
     return base / "gui-config.json"
+
+
+def work_dir_for_source(path: Path) -> Path:
+    """Stable per-source GUI workspace so a canceled/failed job can resume."""
+    normalized = str(path.expanduser().resolve()).casefold().encode("utf-8")
+    key = hashlib.sha256(normalized).hexdigest()[:20]
+    local = os.environ.get("LOCALAPPDATA")
+    base = Path(local) / "QwenSubtitle" if local else Path.home() / ".qwensubtitle"
+    return base / "jobs" / f"gui-{key}"

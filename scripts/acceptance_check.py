@@ -9,6 +9,7 @@ Automated checks for the current machine/release tree. Hardware matrix rows
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -59,18 +60,99 @@ def check_doctor() -> tuple[bool, str]:
     return ready, f"{status}; GPU={gpu}; cuda={report.get('checks', {}).get('torch_cuda')}"
 
 
-def check_locks() -> tuple[bool, str]:
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def check_locks(root: Path = ROOT) -> tuple[bool, str]:
     required = [
-        ROOT / "uv.lock",
-        ROOT / "manifests" / "runtime-lock.json",
-        ROOT / "manifests" / "model-lock.json",
-        ROOT / "manifests" / "ffmpeg-lock.json",
-        ROOT / "manifests" / "licenses.json",
+        root / "manifests" / "runtime-lock.json",
+        root / "manifests" / "model-lock.json",
+        root / "manifests" / "ffmpeg-lock.json",
+        root / "manifests" / "licenses.json",
     ]
-    missing = [str(p.relative_to(ROOT)) for p in required if not p.is_file()]
+    uv_lock = root / "uv.lock"
+    if not uv_lock.is_file():
+        uv_lock = root / "manifests" / "uv.lock"
+    required.append(uv_lock)
+    missing = [str(p.relative_to(root)) for p in required if not p.is_file()]
     if missing:
         return False, "missing: " + ", ".join(missing)
-    return True, "uv.lock + runtime/model/ffmpeg/licenses locks present"
+    try:
+        model_lock = json.loads((root / "manifests" / "model-lock.json").read_text(encoding="utf-8"))
+        for entry in model_lock.get("entries") or []:
+            revision = str(entry.get("revision") or "")
+            if not revision or "TBD" in revision:
+                return False, f"model revision not pinned: {entry.get('name')}"
+            files = entry.get("required_files") or []
+            if not files:
+                return False, f"model file manifest missing: {entry.get('name')}"
+            for item in files:
+                digest = str(item.get("sha256") or "")
+                if len(digest) != 64 or not item.get("size"):
+                    return False, f"invalid model file lock: {entry.get('name')}/{item.get('path')}"
+        ffmpeg_lock = json.loads((root / "manifests" / "ffmpeg-lock.json").read_text(encoding="utf-8"))
+        if any(len(str(e.get("sha256") or "")) != 64 for e in ffmpeg_lock.get("entries") or []):
+            return False, "FFmpeg hashes are incomplete"
+        runtime_lock = json.loads((root / "manifests" / "runtime-lock.json").read_text(encoding="utf-8"))
+        if any(not e.get("version") or "TBD" in str(e.get("version")) for e in runtime_lock.get("entries") or []):
+            return False, "runtime versions are incomplete"
+        integrity = runtime_lock.get("integrity")
+        if integrity:
+            expected = str(integrity.get("uv_lock_sha256") or "")
+            if expected != _sha256(uv_lock):
+                return False, "runtime lock does not match bundled uv.lock"
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return False, f"invalid lock data: {exc}"
+    return True, "runtime/model/ffmpeg locks parsed and pinned"
+
+
+def check_release_tree(root: Path) -> tuple[bool, str]:
+    runtime = root / "runtime"
+    python = runtime / "python.exe"
+    site = runtime / "Lib" / "site-packages"
+    problems: list[str] = []
+    if not python.is_file():
+        problems.append("runtime/python.exe missing")
+    if (runtime / "pyvenv.cfg").exists():
+        problems.append("pyvenv.cfg present")
+    if not (site / "qsub_core").is_dir():
+        problems.append("qsub_core not installed")
+    if not (site / "gui").is_dir():
+        problems.append("gui not installed")
+    for pth in site.glob("*.pth") if site.is_dir() else []:
+        if "editable" in pth.name.lower():
+            problems.append(f"editable pth present: {pth.name}")
+        for raw in pth.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw.strip()
+            if not line or line.startswith(("#", "import ")):
+                continue
+            candidate = Path(line)
+            if candidate.is_absolute():
+                try:
+                    candidate.resolve().relative_to(runtime.resolve())
+                except ValueError:
+                    problems.append(f"external pth path: {line}")
+    if problems:
+        return False, "; ".join(problems)
+    proc = _run(
+        [
+            str(python),
+            "-I",
+            "-c",
+            "import pathlib,sys,qsub_core,gui; "
+            "assert pathlib.Path(sys.base_prefix).resolve()==pathlib.Path(sys.argv[1]).resolve()",
+            str(runtime),
+        ],
+        cwd=root,
+    )
+    if proc.returncode != 0:
+        return False, f"standalone interpreter failed: {(proc.stderr or proc.stdout).strip()[:240]}"
+    return True, "standalone CPython; non-editable app; no external .pth paths"
 
 
 def check_models() -> tuple[bool, str]:
@@ -146,6 +228,7 @@ def main() -> int:
     p.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
     p.add_argument("--srt", type=Path, default=None, help="Validate an existing SRT only")
     p.add_argument("--skip-pytest", action="store_true")
+    p.add_argument("--release-root", type=Path, default=None, help="Portable/install root to validate")
     p.add_argument("--skip-e2e", action="store_true", help="Skip --media even if provided")
     p.add_argument(
         "--report",
@@ -167,8 +250,12 @@ def main() -> int:
         if not args.skip_pytest:
             ok, detail = check_pytest()
             results.append({"name": "pytest", "ok": ok, "detail": detail})
-        ok, detail = check_locks()
+        lock_root = args.release_root.resolve() if args.release_root else ROOT
+        ok, detail = check_locks(lock_root)
         results.append({"name": "locks", "ok": ok, "detail": detail})
+        if args.release_root:
+            ok, detail = check_release_tree(args.release_root.resolve())
+            results.append({"name": "release_tree", "ok": ok, "detail": detail})
         ok, detail = check_models()
         results.append({"name": "models", "ok": ok, "detail": detail})
         ok, detail = check_doctor()

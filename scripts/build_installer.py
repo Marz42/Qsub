@@ -58,8 +58,27 @@ def check_source(source: Path, *, require_models: bool) -> list[str]:
         errors.append(f"missing qsub.cmd under {source}")
     if not (source / "QwenSubtitle.vbs").is_file() and not (source / "QwenSubtitle.cmd").is_file():
         errors.append(f"missing GUI launcher under {source}")
-    if not (source / "runtime" / "Scripts" / "python.exe").is_file():
+    runtime = source / "runtime"
+    if not (runtime / "python.exe").is_file():
         errors.append(f"missing embedded runtime under {source / 'runtime'}")
+    if (runtime / "pyvenv.cfg").exists():
+        errors.append("runtime is a venv, not a standalone CPython tree")
+    site = runtime / "Lib" / "site-packages"
+    if not (site / "qsub_core").is_dir() or not (site / "gui").is_dir():
+        errors.append("qsub_core/gui are not installed into runtime site-packages")
+    if list(site.glob("*editable*.pth")):
+        errors.append("editable .pth found in release runtime")
+    for pth in site.glob("*.pth") if site.is_dir() else []:
+        for raw in pth.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw.strip()
+            if not line or line.startswith(("#", "import ")):
+                continue
+            candidate = Path(line)
+            if candidate.is_absolute():
+                try:
+                    candidate.resolve().relative_to(runtime.resolve())
+                except ValueError:
+                    errors.append(f"external absolute path in {pth.name}: {line}")
     if require_models:
         for name in ("Qwen3-ASR-0.6B", "Qwen3-ForcedAligner-0.6B", "silero-vad"):
             d = source / "models" / name

@@ -12,6 +12,7 @@ import torch
 from qsub_core import errors
 from qsub_core.asr.backend import ASRResult
 from qsub_core.config import asr_model_path
+from qsub_core.model_store import model_entry, validate_model_dir
 
 log = logging.getLogger(__name__)
 
@@ -31,8 +32,12 @@ class QwenASRBackend:
         max_new_tokens: int = 512,
     ):
         path = Path(model_path) if model_path else asr_model_path()
-        if not path.is_dir() or not any(path.iterdir()):
-            raise ASRError(f"ASR model missing: {path}", errors.MODEL_MISSING)
+        status = validate_model_dir(path, model_entry("Qwen3-ASR-0.6B"), verify_hashes=False)
+        if not status["ok"]:
+            raise ASRError(
+                f"ASR model missing or invalid: {path}: {'; '.join(status['issues'])}",
+                errors.MODEL_MISSING,
+            )
 
         from qwen_asr import Qwen3ASRModel
 
